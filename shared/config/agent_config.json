@@ -1,0 +1,110 @@
+{
+  "agents": {
+    "master": {
+      "name": "Master Orchestration Agent",
+      "port": 5000,
+      "redis_channel": "master_channel",
+      "heartbeat_interval": 30,
+      "responsibilities": [
+        "Coordinate all agents",
+        "Monitor system health",
+        "Optimize resource allocation",
+        "Handle inter-agent communication"
+      ]
+    },
+    "frontend": {
+      "name": "Frontend Interface Agent",
+      "port": 3000,
+      "websocket_url": "ws://localhost:3001/ws",
+      "api_base_url": "http://localhost:3001/api",
+      "responsibilities": [
+        "Provide web interface",
+        "Display real-time data",
+        "Handle user interactions",
+        "Visualize portfolio performance"
+      ]
+    },
+    "backend": {
+      "name": "Backend Orchestration Agent", 
+      "port": 3001,
+      "redis_channel": "backend_channel",
+      "heartbeat_interval": 30,
+      "responsibilities": [
+        "API coordination",
+        "Data flow management",
+        "External API integration",
+        "WebSocket communication"
+      ]
+    },
+    "discovery": {
+      "name": "Stock Discovery Agent",
+      "redis_channel": "discovery_channel",
+      "heartbeat_interval": 30,
+      "scan_interval": 300,
+      "responsibilities": [
+        "Screen stock universe",
+        "Apply AI filtering criteria",
+        "Generate stock recommendations",
+        "Calculate AI scores"
+      ]
+    },
+    "backtesting": {
+      "name": "Backtesting Agent",
+      "redis_channel": "backtesting_channel", 
+      "heartbeat_interval": 30,
+      "optimization_interval": 3600,
+      "responsibilities": [
+        "Execute strategy backtests",
+        "Calculate performance metrics",
+        "Optimize parameters",
+        "Generate performance reports"
+      ]
+    },
+    "portfolio": {
+      "name": "Portfolio Management Agent",
+      "redis_channel": "portfolio_channel",
+      "heartbeat_interval": 30,
+      "rebalance_interval": 3600,
+      "responsibilities": [
+        "Manage portfolio positions",
+        "Execute trades",
+        "Monitor risk metrics",
+        "Optimize allocations"
+      ]
+    }
+  },
+  "communication": {
+    "redis": {
+      "host": "localhost",
+      "port": 6379,
+      "db": 0
+    },
+    "protocols": {
+      "heartbeat": {
+        "channel": "master_channel",
+        "interval": 30
+      },
+      "alerts": {
+        "channel": "alerts_channel",
+        "priorities": ["low", "medium", "high", "critical"]
+      },
+      "data_sync": {
+        "channel": "data_sync_channel",
+        "batch_size": 100
+      }
+    }
+  },
+  "risk_management": {
+    "portfolio_limits": {
+      "max_position_size": 0.15,
+      "max_sector_exposure": 0.30,
+      "daily_loss_limit": 0.03,
+      "max_drawdown": 0.20
+    },
+    "trading_limits": {
+      "max_daily_trades": 50,
+      "min_position_size": 0.01,
+      "max_order_value": 10000
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "name": "daily-trading-system",
+  "version": "1.0.0",
+  "description": "AI-powered multi-agent stock trading system",
+  "type": "module",
+  "scripts": {
+    "dev": "python3 scripts/start_enhanced_system.py",
+    "dev:standard": "concurrently \"npm run dev:master\" \"npm run dev:frontend\" \"npm run dev:backend\" \"npm run dev:discovery\" \"npm run dev:backtesting\" \"npm run dev:portfolio\"",
+    "dev:enhanced": "python3 scripts/start_enhanced_system.py",
+    "dev:master": "cd agents/master && python enhanced_main.py",
+    "dev:frontend": "cd agents/frontend && npm start",
+    "dev:backend": "cd agents/backend && python main.py", 
+    "dev:discovery": "cd agents/discovery && python enhanced_main.py",
+    "dev:backtesting": "cd agents/backtesting && python main.py",
+    "dev:portfolio": "cd agents/portfolio && python main.py",
+    "monitor": "python3 scripts/communication_monitor.py",
+    "monitor:detailed": "python3 scripts/communication_monitor.py --detailed",
+    "install:all": "npm install && npm run install:frontend",
+    "install:frontend": "cd agents/frontend && npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "keywords": ["trading", "ai", "multi-agent", "stocks", "automation"],
+  "author": "Michael Mote",
+  "license": "MIT"
+}

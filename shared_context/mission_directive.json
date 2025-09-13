@@ -1,0 +1,86 @@
+{
+  "mission": "EXPLOSIVE STOCK DETECTION SYSTEM",
+  "timestamp": "2025-09-12T17:25:00Z",
+  "target_performance": {
+    "benchmark": "+63.8% portfolio returns",
+    "reference_period": "June 1 - July 4",
+    "top_performers": [
+      {"symbol": "VIGL", "return": "+324.0%"},
+      {"symbol": "CRWV", "return": "+171.0%"},
+      {"symbol": "AEVA", "return": "+162.0%"},
+      {"symbol": "CRDO", "return": "+108.0%"},
+      {"symbol": "SEZL", "return": "+66.0%"}
+    ]
+  },
+  "agent_directives": {
+    "stock_discovery": {
+      "priority": "CRITICAL",
+      "task": "Build explosive stock detection using Polygon API",
+      "api_key": "1ORwpSzeOV20X6uaA8G3Zuxx7hLJ0KIC",
+      "target": "Find stocks with 100%+ potential like VIGL, CRWV, AEVA",
+      "required_actions": [
+        "Implement real-time scanning every 2 minutes",
+        "Detect breakout patterns, volume surges, news catalysts",
+        "Send explosive_opportunity messages to other agents",
+        "Report progress every 30 minutes"
+      ]
+    },
+    "backtesting": {
+      "priority": "HIGH",
+      "task": "Validate explosive opportunities with historical analysis",
+      "target": "Confirm patterns similar to successful squeeze plays",
+      "required_actions": [
+        "Listen for explosive_opportunity messages",
+        "Run rapid backtests on similar historical patterns",
+        "Provide confidence scores and entry/exit strategies",
+        "Report validation results"
+      ]
+    },
+    "portfolio_management": {
+      "priority": "HIGH", 
+      "task": "Execute explosive trades with proper risk management",
+      "target": "Maintain 10-15 explosive positions, avoid losses >25%",
+      "required_actions": [
+        "Process validated explosive opportunities",
+        "Calculate optimal position sizes (2% risk per trade)",
+        "Monitor existing positions for explosive moves",
+        "Report portfolio performance"
+      ]
+    },
+    "backend_orchestration": {
+      "priority": "MEDIUM",
+      "task": "Coordinate data flow and trade execution",
+      "required_actions": [
+        "Manage Polygon API rate limits",
+        "Handle trade execution coordination", 
+        "Provide APIs for frontend",
+        "Report system health"
+      ]
+    },
+    "frontend_interface": {
+      "priority": "MEDIUM",
+      "task": "Create user interface for explosive stock purchasing",
+      "required_actions": [
+        "Display real-time explosive opportunities",
+        "Allow users to purchase system-identified stocks",
+        "Show portfolio performance vs benchmark",
+        "Report user engagement metrics"
+      ]
+    }
+  },
+  "success_metrics": {
+    "weekly_targets": "3-5 explosive opportunities identified",
+    "annual_return_target": "50%+ (beating 63.8% benchmark)",
+    "max_loss_per_position": "25%",
+    "portfolio_size": "10-15 explosive growth stocks"
+  },
+  "status_reporting": {
+    "frequency": "Every 30 minutes",
+    "required_updates": [
+      "Current task progress",
+      "Explosive opportunities found",
+      "System performance metrics",
+      "Issues or blockers"
+    ]
+  }
+}

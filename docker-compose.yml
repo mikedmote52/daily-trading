@@ -1,0 +1,143 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: trading-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: trading-postgres
+    environment:
+      POSTGRES_DB: trading_system
+      POSTGRES_USER: trader
+      POSTGRES_PASSWORD: trading_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: unless-stopped
+
+  master-agent:
+    build:
+      context: .
+      dockerfile: agents/master/Dockerfile
+    container_name: trading-master
+    depends_on:
+      - redis
+      - postgres
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://trader:trading_password@postgres:5432/trading_system
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+    volumes:
+      - ./agents/master:/app
+      - ./shared:/app/shared
+    restart: unless-stopped
+
+  backend-agent:
+    build:
+      context: .
+      dockerfile: agents/backend/Dockerfile
+    container_name: trading-backend
+    depends_on:
+      - redis
+      - postgres
+      - master-agent
+    ports:
+      - "3001:3001"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://trader:trading_password@postgres:5432/trading_system
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+      - ALPACA_API_KEY=${ALPACA_API_KEY}
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
+    volumes:
+      - ./agents/backend:/app
+      - ./shared:/app/shared
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: agents/frontend/Dockerfile
+    container_name: trading-frontend
+    depends_on:
+      - backend-agent
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:3001
+      - REACT_APP_WEBSOCKET_URL=ws://localhost:3001
+    volumes:
+      - ./agents/frontend:/app
+    restart: unless-stopped
+
+  discovery-agent:
+    build:
+      context: .
+      dockerfile: agents/discovery/Dockerfile
+    container_name: trading-discovery
+    depends_on:
+      - redis
+      - master-agent
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+      - POLYGON_API_KEY=${POLYGON_API_KEY}
+      - ALPHA_VANTAGE_API_KEY=${ALPHA_VANTAGE_API_KEY}
+    volumes:
+      - ./agents/discovery:/app
+      - ./shared:/app/shared
+    restart: unless-stopped
+
+  backtesting-agent:
+    build:
+      context: .
+      dockerfile: agents/backtesting/Dockerfile
+    container_name: trading-backtesting
+    depends_on:
+      - redis
+      - master-agent
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+    volumes:
+      - ./agents/backtesting:/app
+      - ./shared:/app/shared
+    restart: unless-stopped
+
+  portfolio-agent:
+    build:
+      context: .
+      dockerfile: agents/portfolio/Dockerfile
+    container_name: trading-portfolio
+    depends_on:
+      - redis
+      - master-agent
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+      - ALPACA_API_KEY=${ALPACA_API_KEY}
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
+    volumes:
+      - ./agents/portfolio:/app
+      - ./shared:/app/shared
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+    driver: local
+  postgres_data:
+    driver: local
+
+networks:
+  default:
+    name: trading-network

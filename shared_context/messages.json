@@ -1,0 +1,64 @@
+{
+  "message_queue": [
+    {
+      "id": "master_001",
+      "sender": "master_orchestration",
+      "recipient": "all",
+      "message_type": "system_updates",
+      "content": {
+        "alert_type": "CRITICAL_MISSION_DIRECTIVE",
+        "message": "EXPLOSIVE STOCK DETECTION SYSTEM ACTIVATED",
+        "target": "Replicate +63.8% returns from June-July squeeze tracker",
+        "action_required": "Read mission_directive.json immediately and begin explosive stock detection",
+        "polygon_api_key": "1ORwpSzeOV20X6uaA8G3Zuxx7hLJ0KIC",
+        "priority": "URGENT"
+      },
+      "timestamp": "2025-09-12T17:25:00Z",
+      "priority": "urgent",
+      "status": "pending"
+    },
+    {
+      "id": "master_002", 
+      "sender": "master_orchestration",
+      "recipient": "stock_discovery",
+      "message_type": "screening_requests",
+      "content": {
+        "task": "BUILD_EXPLOSIVE_DETECTION_SYSTEM",
+        "requirements": [
+          "Use Polygon API key: 1ORwpSzeOV20X6uaA8G3Zuxx7hLJ0KIC",
+          "Find stocks with 100%+ potential like VIGL (+324%), CRWV (+171%)",
+          "Scan every 2 minutes during market hours",
+          "Report progress every 30 minutes"
+        ],
+        "success_targets": "3-5 explosive opportunities weekly"
+      },
+      "timestamp": "2025-09-12T17:25:00Z",
+      "priority": "urgent", 
+      "status": "pending"
+    }
+  ],
+  "message_history": [],
+  "agent_subscriptions": {
+    "master_orchestration": ["all"],
+    "frontend_interface": ["system_updates", "portfolio_updates", "alerts"],
+    "backend_orchestration": ["trade_requests", "data_updates", "system_status"],
+    "stock_discovery": ["screening_requests", "market_updates"],
+    "backtesting": ["backtest_requests", "strategy_updates"],
+    "portfolio_management": ["trade_signals", "risk_updates", "rebalance_requests"]
+  },
+  "message_types": {
+    "system_updates": "System-wide status and health updates",
+    "portfolio_updates": "Portfolio performance and position updates",
+    "alerts": "Critical alerts and notifications",
+    "trade_requests": "Buy/sell trade execution requests",
+    "data_updates": "Market data and price updates",
+    "system_status": "Agent status and heartbeat messages",
+    "screening_requests": "Stock screening and analysis requests",
+    "market_updates": "Market condition and news updates",
+    "backtest_requests": "Strategy backtesting requests",
+    "strategy_updates": "Strategy performance and optimization updates",
+    "trade_signals": "Buy/sell signals from analysis",
+    "risk_updates": "Risk metrics and limit violations",
+    "rebalance_requests": "Portfolio rebalancing instructions"
+  }
+}
