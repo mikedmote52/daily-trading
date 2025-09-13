@@ -111,49 +111,81 @@ class StockDiscoveryAgent:
         self._initialize_ml_model()
 
     def _load_stock_universe(self) -> List[str]:
-        """Load comprehensive stock universe focusing on explosive growth sectors"""
-        # Enhanced universe based on explosive growth patterns from June-July data
-        
-        # Biotech/Pharma (VIGL pattern - low cap, high potential)
-        biotech = ['VIGL', 'SAVA', 'BIIB', 'MRNA', 'BNTX', 'NVAX', 'GILD', 'REGN', 'VRTX', 'AMGN', 
-                   'ABBV', 'BMY', 'PFE', 'JNJ', 'RHHBY', 'NVO', 'TEVA', 'MRK', 'LLY', 'AZN']
-        
-        # EV/Tech Innovation (AEVA pattern - sector momentum)  
-        ev_tech = ['AEVA', 'LCID', 'RIVN', 'TSLA', 'NIO', 'XPEV', 'LI', 'CHPT', 'BLNK', 'EVGO',
-                   'RIDE', 'GOEV', 'CANOO', 'FSR', 'HYLN', 'NKLA', 'QS', 'STEM', 'BLDP', 'FCEL']
-        
-        # Cloud/SaaS (CRDO pattern - high growth tech)
-        cloud_saas = ['CRDO', 'SNOW', 'PLTR', 'DDOG', 'OKTA', 'ZS', 'CRWD', 'NET', 'ESTC', 'DOCU',
-                      'CRM', 'NOW', 'WDAY', 'TEAM', 'SPLK', 'TWLO', 'ZM', 'DOCN', 'S', 'BOX']
-        
-        # Small/Mid Cap Growth (CRWV, SEZL pattern - squeeze potential)
-        small_caps = ['CRWV', 'SEZL', 'REKR', 'QUBT', 'RGTI', 'WOLF', 'BBAI', 'MVIS', 'FUBO', 'SPCE',
-                      'CLOV', 'WISH', 'SOFI', 'HOOD', 'PROG', 'ATER', 'BBIG', 'RDBX', 'NKTR', 'VIAC']
-        
-        # Semiconductor Momentum (SMCI, NVDA, AMD pattern)
-        semiconductors = ['SMCI', 'NVDA', 'AMD', 'AVGO', 'QCOM', 'MRVL', 'LRCX', 'KLAC', 'AMAT', 'MU',
-                          'INTC', 'TXN', 'ADI', 'NXPI', 'MCHP', 'ON', 'SWKS', 'QRVO', 'CRUS', 'RMBS']
-        
-        # Meme/Squeeze Stocks (High short interest potential)
-        squeeze_candidates = ['GME', 'AMC', 'BBBY', 'BED', 'APRN', 'BYND', 'PELOTON', 'NFLX', 'DIS', 'PYPL']
-        
-        # Emerging Tech (Quantum, AI, Space - QUBT pattern)
-        emerging = ['QUBT', 'RGTI', 'IONQ', 'ARQQ', 'SPCE', 'RKLB', 'PLTR', 'AI', 'SNOW', 'U',
-                    'PATH', 'DKNG', 'SKLZ', 'RBLX', 'UNITY', 'PINS', 'SNAP', 'TWTR', 'SPOT', 'SQ']
-        
-        # Energy/Clean Tech
-        energy = ['ENPH', 'SEDG', 'FSLR', 'RUN', 'NOVA', 'CSIQ', 'JKS', 'DQ', 'BE', 'PLUG']
-        
-        # Traditional high performers (TSLA pattern)
-        blue_chips = ['TSLA', 'AAPL', 'GOOGL', 'MSFT', 'AMZN', 'META', 'NFLX', 'UBER', 'ROKU', 'ZM']
-        
-        # Combine all sectors and remove duplicates
-        universe = list(set(
-            biotech + ev_tech + cloud_saas + small_caps + semiconductors + 
-            squeeze_candidates + emerging + energy + blue_chips
-        ))
-        
-        return universe
+        """Load entire stock universe using Polygon API for production deployment"""
+        try:
+            import requests
+            import time
+            
+            api_key = "1ORwpSzeOV20X6uaA8G3Zuxx7hLJ0KIC"
+            url = "https://api.polygon.io/v3/reference/tickers"
+            
+            all_stocks = []
+            next_url = url
+            page_count = 0
+            max_pages = 10  # Limit for performance in discovery agent
+            
+            while next_url and page_count < max_pages:
+                params = {
+                    'apikey': api_key,
+                    'market': 'stocks',
+                    'active': 'true',
+                    'limit': 1000
+                }
+                
+                if next_url != url:
+                    response = requests.get(next_url, timeout=30)
+                else:
+                    response = requests.get(url, params=params, timeout=30)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    
+                    if 'results' in data:
+                        for ticker in data['results']:
+                            symbol = ticker.get('ticker', '').strip()
+                            ticker_type = ticker.get('type', '').upper()
+                            market = ticker.get('market', '').upper()
+                            
+                            # Strict filtering for common stocks only
+                            if (symbol and 
+                                ticker_type == 'CS' and  # Common Stock only
+                                market == 'STOCKS' and
+                                len(symbol) <= 5 and 
+                                symbol.isalpha() and
+                                len(symbol) >= 2):
+                                all_stocks.append(symbol)
+                    
+                    # Pagination
+                    next_url = data.get('next_url')
+                    if next_url:
+                        next_url += f"&apikey={api_key}"
+                    
+                    page_count += 1
+                    logger.info(f"Loaded {len(all_stocks)} stocks from Polygon (page {page_count})")
+                    time.sleep(0.12)  # Rate limiting
+                    
+                else:
+                    logger.error(f"Polygon API error: {response.status_code}")
+                    break
+            
+            # Remove duplicates and sort
+            unique_stocks = sorted(list(set(all_stocks)))
+            logger.info(f"📊 Total universe loaded: {len(unique_stocks)} stocks from Polygon API")
+            return unique_stocks
+            
+        except Exception as e:
+            logger.error(f"Failed to load universe from Polygon: {e}")
+            # Fallback to focused list for reliability
+            logger.info("Using fallback curated universe...")
+            return [
+                # High-potential sectors only
+                'VIGL', 'IONQ', 'QUBT', 'RGTI', 'ARQQ',  # Quantum/AI
+                'MRNA', 'BNTX', 'NVAX', 'SAVA', 'BIIB',  # Biotech
+                'TSLA', 'LCID', 'RIVN', 'QS', 'FCEL',    # EV/Clean
+                'NVDA', 'AMD', 'SMCI', 'AVGO', 'QCOM',   # Semiconductors  
+                'SNOW', 'PLTR', 'DDOG', 'CRWD', 'NET',   # Cloud/SaaS
+                'GME', 'AMC', 'SPCE', 'MVIS', 'BBAI'     # Squeeze candidates
+            ]
 
     def _initialize_ml_model(self):
         """Initialize rule-based scoring system based on explosive growth patterns"""
