@@ -87,7 +87,6 @@ services:
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: dist
-    plan: starter
     autoDeploy: true
     envVars:
       - key: VITE_DISCOVERY_API_URL
