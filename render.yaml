@@ -96,7 +96,6 @@ services:
       - key: NODE_ENV
         value: production
 
-
   # Redis-compatible Key Value
   - type: keyvalue
     name: alphastack-kv
