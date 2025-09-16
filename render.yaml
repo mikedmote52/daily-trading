@@ -106,7 +106,6 @@ services:
     startCommand: python -m backend.src.services.rq_worker_main
     autoDeploy: true
     numInstances: 1
-    ipAllowList: []
     envVars:
       - key: REDIS_URL
         fromService:
@@ -138,3 +137,6 @@ services:
     region: oregon
     plan: standard
     maxmemoryPolicy: allkeys-lru
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: allow all (temp)
