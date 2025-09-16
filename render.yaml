@@ -87,7 +87,6 @@ services:
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: dist
-    region: oregon
     plan: free
     autoDeploy: true
     envVars:
