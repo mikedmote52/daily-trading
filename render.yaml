@@ -1,4 +1,13 @@
 # Render Blueprint - AlphaStack Trading Platform
+
+databases:
+  - name: alphastack-db
+    databaseName: alphastack
+    user: alphastack
+    region: oregon
+    plan: standard
+    postgresMajorVersion: "17"
+
 services:
   # Discovery API - Stock Discovery Engine
   - type: web
@@ -9,19 +18,15 @@ services:
     dockerfilePath: Dockerfile
     region: oregon
     plan: starter
-    port: 8000
     healthCheckPath: /health
     autoDeploy: true
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: alphastack-db
-          property: connectionString
+        fromDatabase: alphastack-db
+        name: connectionString
       - key: REDIS_URL
-        fromService:
-          type: redis
-          name: alphastack-kv
-          property: connectionString
+        fromService: alphastack-kv
+        name: connectionString
       - key: POLYGON_API_KEY
         sync: false
       - key: DISCOVERY_CYCLE_SECONDS
@@ -44,19 +49,15 @@ services:
     dockerfilePath: Dockerfile
     region: oregon
     plan: starter
-    port: 8001
     healthCheckPath: /health
     autoDeploy: true
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: alphastack-db
-          property: connectionString
+        fromDatabase: alphastack-db
+        name: connectionString
       - key: REDIS_URL
-        fromService:
-          type: redis
-          name: alphastack-kv
-          property: connectionString
+        fromService: alphastack-kv
+        name: connectionString
       - key: ALPACA_BASE_URL
         value: https://paper-api.alpaca.markets
       - key: ALPACA_KEY
@@ -79,7 +80,7 @@ services:
     repo: https://github.com/mikedmote52/daily-trading.git
     rootDir: frontend
     buildCommand: npm install && npm run build
-    staticPublishPath: frontend/dist
+    staticPublishPath: dist
     region: oregon
     plan: starter
     autoDeploy: true
@@ -91,22 +92,9 @@ services:
       - key: NODE_ENV
         value: production
 
-  # Redis Cache
-  - type: redis
+  # Redis-compatible Key Value
+  - type: keyvalue
     name: alphastack-kv
     region: oregon
     plan: standard
     maxmemoryPolicy: allkeys-lru
-
-# Database Configuration
-databases:
-  - name: alphastack-db
-    databaseName: alphastack
-    user: alphastack
-    region: oregon
-    plan: standard
-    postgresMajorVersion: 17
-
-# Auto-deployment triggers
-autoDeploy: true
-branch: main
