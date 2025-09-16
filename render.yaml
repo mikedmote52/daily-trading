@@ -90,8 +90,8 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "20"
-      - key: NODE_ENV
-        value: production
+      - key: NPM_CONFIG_PRODUCTION
+        value: "false"
       - key: VITE_DISCOVERY_API_URL
         value: https://alphastack-discovery.onrender.com
       - key: VITE_ORDERS_API_URL
