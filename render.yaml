@@ -5,7 +5,7 @@ databases:
     databaseName: alphastack
     user: alphastack
     region: oregon
-    plan: starter
+    plan: basic-1gb
     postgresMajorVersion: "17"
 
 services:
@@ -17,7 +17,7 @@ services:
     rootDir: agents/discovery
     dockerfilePath: Dockerfile
     region: oregon
-    plan: free
+    plan: starter
     healthCheckPath: /health
     autoDeploy: true
     envVars:
@@ -51,7 +51,7 @@ services:
     rootDir: agents/backend
     dockerfilePath: Dockerfile
     region: oregon
-    plan: free
+    plan: starter
     healthCheckPath: /health
     autoDeploy: true
     envVars:
@@ -87,7 +87,7 @@ services:
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: dist
-    plan: free
+    plan: starter
     autoDeploy: true
     envVars:
       - key: VITE_DISCOVERY_API_URL
