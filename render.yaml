@@ -80,21 +80,26 @@ services:
         value: production
 
   # Frontend - React Trading UI
-  - type: web
+  - type: static
     name: alphastack-frontend
-    runtime: static
     repo: https://github.com/mikedmote52/daily-trading.git
     rootDir: frontend
-    buildCommand: npm install && npm run build
-    staticPublishPath: dist
+    buildCommand: npm ci && npm run build
+    publishPath: dist
     autoDeploy: true
     envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NODE_ENV
+        value: production
       - key: VITE_DISCOVERY_API_URL
         value: https://alphastack-discovery.onrender.com
       - key: VITE_ORDERS_API_URL
         value: https://alphastack-orders.onrender.com
-      - key: NODE_ENV
-        value: production
+    routes:
+      - type: rewrite
+        source: "/*"
+        destination: "/index.html"
 
   # Redis-compatible Key Value
   - type: keyvalue
