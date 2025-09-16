@@ -22,11 +22,13 @@ services:
     autoDeploy: true
     envVars:
       - key: DATABASE_URL
-        fromDatabase: alphastack-db
-        name: connectionString
+        fromDatabase:
+          name: alphastack-db
+          property: connectionString
       - key: REDIS_URL
-        fromService: alphastack-kv
-        name: connectionString
+        fromService:
+          name: alphastack-kv
+          property: connectionString
       - key: POLYGON_API_KEY
         sync: false
       - key: DISCOVERY_CYCLE_SECONDS
@@ -53,11 +55,13 @@ services:
     autoDeploy: true
     envVars:
       - key: DATABASE_URL
-        fromDatabase: alphastack-db
-        name: connectionString
+        fromDatabase:
+          name: alphastack-db
+          property: connectionString
       - key: REDIS_URL
-        fromService: alphastack-kv
-        name: connectionString
+        fromService:
+          name: alphastack-kv
+          property: connectionString
       - key: ALPACA_BASE_URL
         value: https://paper-api.alpaca.markets
       - key: ALPACA_KEY
