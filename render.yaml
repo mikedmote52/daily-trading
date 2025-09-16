@@ -79,12 +79,13 @@ services:
       - key: ENVIRONMENT
         value: production
 
-  # Frontend - React Trading UI (redeploying with devDeps fix)
+  # Frontend - React Trading UI
   - type: static
     name: alphastack-frontend
     repo: https://github.com/mikedmote52/daily-trading.git
     rootDir: frontend
-    buildCommand: npm ci && npm run build
+    # Force devDependencies (vite) to install, then build
+    buildCommand: npm ci --include=dev && npm run build
     publishPath: dist
     autoDeploy: true
     envVars:
@@ -92,10 +93,11 @@ services:
         value: "20"
       - key: NPM_CONFIG_PRODUCTION
         value: "false"
+      - key: VITE_ORDERS_API_URL
+        # set to your actual orders URL after first deploy if different
+        value: "https://alphastack-orders.onrender.com"
       - key: VITE_DISCOVERY_API_URL
         value: https://alphastack-discovery.onrender.com
-      - key: VITE_ORDERS_API_URL
-        value: https://alphastack-orders.onrender.com
     routes:
       - type: rewrite
         source: "/*"
