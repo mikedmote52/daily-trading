@@ -96,6 +96,39 @@ services:
       - key: NODE_ENV
         value: production
 
+  # Discovery Worker - Background Processing
+  - type: worker
+    name: amc-discovery-worker
+    env: python
+    plan: standard
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m backend.src.services.rq_worker_main
+    autoDeploy: true
+    numInstances: 1
+    envVars:
+      - key: REDIS_URL
+        fromService:
+          name: alphastack-kv
+          property: connectionString
+      - key: POLYGON_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: alphastack-db
+          property: connectionString
+      - key: ALPACA_API_KEY
+        sync: false
+      - key: ALPACA_SECRET_KEY
+        sync: false
+      - key: ALPACA_BASE_URL
+        sync: false
+      - key: ENV
+        value: prod
+      - key: LOG_LEVEL
+        value: INFO
+      - key: DISCOVERY_CACHE_TTL
+        value: "60"
+
   # Redis-compatible Key Value
   - type: keyvalue
     name: alphastack-kv
