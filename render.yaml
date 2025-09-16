@@ -1,63 +1,68 @@
-# Render Blueprint - Optimized Multi-Service Trading Platform
+# Render Blueprint - AlphaStack Trading Platform
 services:
   # Discovery API - Stock Discovery Engine
   - type: web
-    name: discovery-api
-    env: python
+    name: alphastack-discovery
+    runtime: docker
+    repo: https://github.com/mikedmote52/daily-trading.git
+    rootDir: agents/discovery
+    dockerfilePath: Dockerfile
     region: oregon
-    plan: starter  # Upgrade to standard for production
-    buildCommand: |
-      cd agents/discovery &&
-      pip install --upgrade pip &&
-      pip install -r requirements.txt &&
-      echo "Installing MCP CLI..." &&
-      npm install -g @anthropic/claude-mcp &&
-      echo "Verifying MCP installation..." &&
-      which claude || echo "Claude CLI not found" &&
-      claude mcp list || echo "MCP list failed" &&
-      echo "Configuring Polygon MCP..." &&
-      claude mcp add polygon --api-key $POLYGON_API_KEY || echo "MCP configuration attempted - may fail in build environment" &&
-      echo "Build complete - MCP will be configured at runtime if needed"
-    startCommand: |
-      cd agents/discovery &&
-      chmod +x startup.sh &&
-      ./startup.sh uvicorn discovery_api:app --host 0.0.0.0 --port $PORT --workers 2
+    plan: starter
+    port: 8000
+    healthCheckPath: /health
+    autoDeploy: true
     envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: alphastack-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: alphastack-kv
+          property: connectionString
       - key: POLYGON_API_KEY
         sync: false
+      - key: DISCOVERY_CYCLE_SECONDS
+        value: "60"
+      - key: TOP_N
+        value: "8"
       - key: ENVIRONMENT
         value: production
       - key: RENDER
         value: "true"
       - key: MCP_ENABLED
         value: "true"
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: trading-cache
-          property: connectionString
-    healthCheckPath: /health
-    autoDeploy: true
 
   # Orders API - Alpaca Trading Integration
   - type: web
-    name: orders-api
-    env: python
+    name: alphastack-orders
+    runtime: docker
+    repo: https://github.com/mikedmote52/daily-trading.git
+    rootDir: agents/backend
+    dockerfilePath: Dockerfile
     region: oregon
     plan: starter
-    buildCommand: |
-      cd agents/backend &&
-      pip install fastapi uvicorn httpx pydantic
-    startCommand: |
-      cd agents/backend &&
-      uvicorn orders_api:app --host 0.0.0.0 --port $PORT --workers 1
+    port: 8001
+    healthCheckPath: /health
+    autoDeploy: true
     envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: alphastack-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: alphastack-kv
+          property: connectionString
+      - key: ALPACA_BASE_URL
+        value: https://paper-api.alpaca.markets
       - key: ALPACA_KEY
         sync: false
       - key: ALPACA_SECRET
         sync: false
-      - key: ALPACA_BASE_URL
-        value: https://paper-api.alpaca.markets
       - key: LIMIT_BAND_PCT
         value: "0.005"
       - key: SL_PCT_DEFAULT
@@ -66,54 +71,41 @@ services:
         value: "0.20"
       - key: ENVIRONMENT
         value: production
-    healthCheckPath: /health
-    autoDeploy: true
 
-  # Modern React Frontend - Real-time Trading UI
+  # Frontend - React Trading UI
   - type: web
-    name: explosive-discovery-ui
-    env: node
+    name: alphastack-frontend
+    runtime: static
+    repo: https://github.com/mikedmote52/daily-trading.git
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: frontend/dist
     region: oregon
     plan: starter
-    buildCommand: |
-      cd frontend &&
-      npm install &&
-      npm run build
-    staticPublishPath: ./frontend/dist
+    autoDeploy: true
     envVars:
       - key: VITE_DISCOVERY_API_URL
-        fromService:
-          type: web
-          name: discovery-api
-          property: url
+        value: https://alphastack-discovery.onrender.com
       - key: VITE_ORDERS_API_URL
-        fromService:
-          type: web
-          name: orders-api
-          property: url
-      - key: VITE_WS_URL
-        fromService:
-          type: web
-          name: discovery-api
-          property: url
+        value: https://alphastack-orders.onrender.com
       - key: NODE_ENV
         value: production
-    autoDeploy: true
 
-  # High-Performance Redis Cache
+  # Redis Cache
   - type: redis
-    name: trading-cache
+    name: alphastack-kv
     region: oregon
-    plan: starter
+    plan: standard
     maxmemoryPolicy: allkeys-lru
 
-  # PostgreSQL Database - Analytics & Results Storage
-  - type: pgsql
-    name: trading-database
+# Database Configuration
+databases:
+  - name: alphastack-db
+    databaseName: alphastack
+    user: alphastack
     region: oregon
-    plan: starter
-    databaseName: explosive_discovery
-    databaseUser: trading_user
+    plan: standard
+    postgresMajorVersion: 17
 
 # Auto-deployment triggers
 autoDeploy: true
