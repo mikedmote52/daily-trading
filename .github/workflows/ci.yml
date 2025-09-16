@@ -1,0 +1,25 @@
+name: CI - Discovery System Guard
+on: [push, pull_request]
+
+jobs:
+  discovery-guard:
+    runs-on: ubuntu-latest
+    name: Enforce Single Discovery System
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run discovery system guard
+        run: scripts/ci-assert-single-discovery.sh
+
+      - name: Verify discovery system integrity
+        run: |
+          echo "Checking core discovery engine exists..."
+          test -f "agents/discovery/universal_discovery.py" || exit 1
+          echo "✅ Core discovery engine verified"
+
+          echo "Checking discovery API wrapper exists..."
+          test -f "agents/discovery/discovery_api.py" || exit 1
+          echo "✅ Discovery API wrapper verified"
+
+          echo "🎯 Discovery system integrity check passed"

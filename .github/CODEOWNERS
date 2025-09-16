@@ -1,0 +1,17 @@
+# CODEOWNERS - Protect critical discovery system files
+# Only @michaelmote can modify the core discovery engine
+
+# Core discovery engine - SINGLE SOURCE OF TRUTH
+/agents/discovery/universal_discovery.py  @michaelmote
+
+# Discovery system directory protection
+/agents/discovery/**                      @michaelmote
+
+# Prevent creation of duplicate discovery systems
+*discovery*.py                           @michaelmote
+*scanner*.py                             @michaelmote
+*finder*.py                              @michaelmote
+
+# Critical system rules
+/SYSTEM_RULES.md                         @michaelmote
+/CLAUDE.md                               @michaelmote

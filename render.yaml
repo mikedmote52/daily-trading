@@ -1,0 +1,120 @@
+# Render Blueprint - Optimized Multi-Service Trading Platform
+services:
+  # Discovery API - Stock Discovery Engine
+  - type: web
+    name: discovery-api
+    env: python
+    region: oregon
+    plan: starter  # Upgrade to standard for production
+    buildCommand: |
+      cd agents/discovery &&
+      pip install --upgrade pip &&
+      pip install -r requirements.txt &&
+      echo "Installing MCP CLI..." &&
+      npm install -g @anthropic/claude-mcp &&
+      echo "Verifying MCP installation..." &&
+      which claude || echo "Claude CLI not found" &&
+      claude mcp list || echo "MCP list failed" &&
+      echo "Configuring Polygon MCP..." &&
+      claude mcp add polygon --api-key $POLYGON_API_KEY || echo "MCP configuration attempted - may fail in build environment" &&
+      echo "Build complete - MCP will be configured at runtime if needed"
+    startCommand: |
+      cd agents/discovery &&
+      chmod +x startup.sh &&
+      ./startup.sh uvicorn discovery_api:app --host 0.0.0.0 --port $PORT --workers 2
+    envVars:
+      - key: POLYGON_API_KEY
+        sync: false
+      - key: ENVIRONMENT
+        value: production
+      - key: RENDER
+        value: "true"
+      - key: MCP_ENABLED
+        value: "true"
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: trading-cache
+          property: connectionString
+    healthCheckPath: /health
+    autoDeploy: true
+
+  # Orders API - Alpaca Trading Integration
+  - type: web
+    name: orders-api
+    env: python
+    region: oregon
+    plan: starter
+    buildCommand: |
+      cd agents/backend &&
+      pip install fastapi uvicorn httpx pydantic
+    startCommand: |
+      cd agents/backend &&
+      uvicorn orders_api:app --host 0.0.0.0 --port $PORT --workers 1
+    envVars:
+      - key: ALPACA_KEY
+        sync: false
+      - key: ALPACA_SECRET
+        sync: false
+      - key: ALPACA_BASE_URL
+        value: https://paper-api.alpaca.markets
+      - key: LIMIT_BAND_PCT
+        value: "0.005"
+      - key: SL_PCT_DEFAULT
+        value: "0.10"
+      - key: TP_PCT_DEFAULT
+        value: "0.20"
+      - key: ENVIRONMENT
+        value: production
+    healthCheckPath: /health
+    autoDeploy: true
+
+  # Modern React Frontend - Real-time Trading UI
+  - type: web
+    name: explosive-discovery-ui
+    env: node
+    region: oregon
+    plan: starter
+    buildCommand: |
+      cd frontend &&
+      npm install &&
+      npm run build
+    staticPublishPath: ./frontend/dist
+    envVars:
+      - key: VITE_DISCOVERY_API_URL
+        fromService:
+          type: web
+          name: discovery-api
+          property: url
+      - key: VITE_ORDERS_API_URL
+        fromService:
+          type: web
+          name: orders-api
+          property: url
+      - key: VITE_WS_URL
+        fromService:
+          type: web
+          name: discovery-api
+          property: url
+      - key: NODE_ENV
+        value: production
+    autoDeploy: true
+
+  # High-Performance Redis Cache
+  - type: redis
+    name: trading-cache
+    region: oregon
+    plan: starter
+    maxmemoryPolicy: allkeys-lru
+
+  # PostgreSQL Database - Analytics & Results Storage
+  - type: pgsql
+    name: trading-database
+    region: oregon
+    plan: starter
+    databaseName: explosive_discovery
+    databaseUser: trading_user
+
+# Auto-deployment triggers
+autoDeploy: true
+branch: main

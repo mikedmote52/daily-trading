@@ -1,22 +1,23 @@
 import React from 'react';
-import { AlertTriangle, Info, CheckCircle, XCircle, Clock } from 'lucide-react';
-import { useAgentStatus } from '../contexts/AgentStatusContext';
+import { AlertTriangle, Info, CheckCircle, XCircle, Clock, Bell } from 'lucide-react';
+import { TradingAlert } from '../types/trading';
 
-export const AlertsPanel: React.FC = () => {
-  const { state, dispatch } = useAgentStatus();
-  const { alerts } = state;
+interface AlertsPanelProps {
+  alerts: TradingAlert[];
+  onAcknowledgeAlert: (alertId: string) => void;
+}
 
-  const getAlertIcon = (type: string) => {
-    switch (type) {
-      case 'success':
-        return <CheckCircle className="h-5 w-5 text-green-400" />;
-      case 'error':
-        return <XCircle className="h-5 w-5 text-red-400" />;
-      case 'warning':
-        return <AlertTriangle className="h-5 w-5 text-yellow-400" />;
-      case 'info':
-      default:
-        return <Info className="h-5 w-5 text-blue-400" />;
+export const AlertsPanel: React.FC<AlertsPanelProps> = ({ alerts, onAcknowledgeAlert }) => {
+
+  const getAlertIcon = (type: string, severity: string) => {
+    if (severity === 'critical') {
+      return <XCircle className="h-5 w-5 text-red-500" />;
+    } else if (severity === 'high') {
+      return <AlertTriangle className="h-5 w-5 text-red-400" />;
+    } else if (severity === 'medium') {
+      return <Clock className="h-5 w-5 text-yellow-400" />;
+    } else {
+      return <CheckCircle className="h-5 w-5 text-green-400" />;
     }
   };
 
