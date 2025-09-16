@@ -87,7 +87,6 @@ services:
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: dist
-    region: oregon
     plan: starter
     autoDeploy: true
     envVars:
@@ -107,6 +106,7 @@ services:
     startCommand: python -m backend.src.services.rq_worker_main
     autoDeploy: true
     numInstances: 1
+    ipAllowList: []
     envVars:
       - key: REDIS_URL
         fromService:
