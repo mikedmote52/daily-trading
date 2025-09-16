@@ -96,7 +96,7 @@ services:
       - key: NODE_ENV
         value: production
 
-  # Discovery Worker - Background Processing
+  # Discovery Worker - Background Processing (CORRECTED)
   - type: worker
     name: amc-discovery-worker
     env: python
