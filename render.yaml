@@ -79,7 +79,7 @@ services:
       - key: ENVIRONMENT
         value: production
 
-  # Frontend - React Trading UI
+  # Frontend - React Trading UI (redeploying with devDeps fix)
   - type: static
     name: alphastack-frontend
     repo: https://github.com/mikedmote52/daily-trading.git
