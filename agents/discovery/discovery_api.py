@@ -208,6 +208,37 @@ async def execute_discovery_scan(scan_id: str):
             "timestamp": datetime.now().isoformat()
         }))
 
+@app.get("/debug/gates")
+def debug_gates():
+    """Debug endpoint to see filtering at each gate"""
+    if not discovery_system:
+        raise HTTPException(status_code=500, detail="Discovery system not initialized")
+
+    try:
+        # Run just the universe ingestion and Gate A
+        df = discovery_system.bulk_ingest_universe()
+        logger.info(f"Universe ingested: {len(df)} stocks")
+
+        if len(df) == 0:
+            return {"error": "No universe data available"}
+
+        # Run Gate A filtering
+        gate_a_df = discovery_system.vectorized_gate_a(df)
+
+        return {
+            "universe_count": len(df),
+            "gate_a_survivors": len(gate_a_df),
+            "sample_universe": df.head(3).to_dict('records') if len(df) > 0 else [],
+            "sample_gate_a": gate_a_df.head(3).to_dict('records') if len(gate_a_df) > 0 else [],
+            "config": {
+                "min_volume": discovery_system.config.GATEA_MIN_VOL,
+                "min_rvol": discovery_system.config.GATEA_MIN_RVOL
+            }
+        }
+    except Exception as e:
+        logger.error(f"Debug gates error: {e}")
+        return {"error": str(e)}
+
 @app.get("/signals/top")
 async def get_top_signals():
     """Get top discovery signals (thin wrapper endpoint)"""
