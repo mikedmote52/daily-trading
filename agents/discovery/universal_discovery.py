@@ -796,25 +796,27 @@ class UniversalDiscoverySystem:
             if gate_a_df.empty:
                 logger.info("No candidates passed Gate A")
                 return self._create_result([], universe_df, gate_a_df, pd.DataFrame(), start_time)
-            
-            # Step 3: Top-K selection (no arbitrary slicing)
-            topk_df = self.topk_candidates(gate_a_df, self.config.K_GATEB)
-            
-            # Step 4: Reference data join
-            enriched_df = self.join_reference_data(topk_df)
-            
-            # Step 5: Vectorized Gate B
-            gate_b_df = self.vectorized_gate_b(enriched_df)
-            
-            if gate_b_df.empty:
-                logger.info("No candidates passed Gate B")
-                return self._create_result([], universe_df, gate_a_df, gate_b_df, start_time)
-            
-            # Step 6: Gate C enrichment
-            final_candidates = self.gate_c_enrichment(gate_b_df.head(self.config.N_GATEC))
-            
-            # Create final result
-            result = self._create_result(final_candidates, universe_df, gate_a_df, gate_b_df, start_time)
+
+            # TEMPORARY DEBUG: Return first 5 stocks directly from Gate A
+            logger.info(f"BYPASSING ALL DOWNSTREAM FILTERING - Returning first 5 stocks from {len(gate_a_df)} Gate A candidates")
+
+            # Convert first 5 stocks to final format
+            debug_stocks = []
+            for _, row in gate_a_df.head(5).iterrows():
+                stock = {
+                    'symbol': row.get('symbol', 'UNKNOWN'),
+                    'price': float(row.get('price', 0)),
+                    'last_price': float(row.get('price', 0)),
+                    'score': 85.0,  # Fixed score for testing
+                    'total_score': 85.0,
+                    'volume': int(row.get('day_volume', 0)),
+                    'percent_change': float(row.get('percent_change', 0)),
+                    'rvol_sust': float(row.get('rvol_sust', 1.0))
+                }
+                debug_stocks.append(stock)
+
+            # Create debug result
+            result = self._create_result(debug_stocks, universe_df, gate_a_df, gate_a_df.head(5), start_time)
             
             logger.info("✅ UNIVERSAL DISCOVERY COMPLETE")
             self._log_summary(result)
