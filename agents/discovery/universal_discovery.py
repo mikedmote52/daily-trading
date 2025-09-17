@@ -345,9 +345,10 @@ class UniversalDiscoverySystem:
         # REMOVED: mask_change filter - we don't want stocks that already exploded
         mask_rvol = df['rvol_sust'] >= self.config.GATEA_MIN_RVOL
         
-        # Combine all filters (removed mask_change)
-        combined_mask = (mask_common & mask_not_excluded & mask_not_adr & 
-                        mask_price & mask_volume & mask_rvol)
+        # TEMPORARILY BYPASS ALL FILTERS FOR DEBUGGING
+        # combined_mask = (mask_common & mask_not_excluded & mask_not_adr &
+        #                 mask_price & mask_volume & mask_rvol)
+        combined_mask = pd.Series(True, index=df.index)  # Let everything through
         
         gate_a_output = df[combined_mask].copy().reset_index(drop=True)
         
