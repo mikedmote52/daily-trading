@@ -35,10 +35,10 @@ logger = logging.getLogger('UniversalDiscovery')
 @dataclass
 class GateConfig:
     """Configuration for gate processing"""
-    # Gate A thresholds - TEMPORARILY LOWERED FOR TESTING
+    # Gate A thresholds - ULTRA LOW FOR DEBUGGING
     # GATEA_MIN_PCT = 1.0   # REMOVED - we don't filter by percent change
-    GATEA_MIN_VOL = 100_000  # Minimum volume (lowered from 300K)
-    GATEA_MIN_RVOL = 1.1     # Initial RVOL threshold (lowered from 1.3)
+    GATEA_MIN_VOL = 10_000   # Ultra low volume for testing
+    GATEA_MIN_RVOL = 1.0     # Almost no RVOL filter
     
     # Top-K selections
     K_GATEB = 500            # Top-K after Gate A (optimized for production)
