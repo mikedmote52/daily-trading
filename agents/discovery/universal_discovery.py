@@ -805,12 +805,13 @@ class UniversalDiscoverySystem:
                 universe_df = pd.DataFrame(sample_data)
                 logger.info(f"Created sample universe with {len(universe_df)} stocks for demo")
             
-            # Step 2: Vectorized Gate A (entire universe)
-            gate_a_df = self.vectorized_gate_a(universe_df)
-            
+            # BYPASS GATE A ENTIRELY FOR DEMO - Just take first 5 stocks from universe
+            logger.info("BYPASSING GATE A - Taking first 5 stocks from universe for demo")
+            gate_a_df = universe_df.head(5).copy()
+
             if gate_a_df.empty:
-                logger.info("No candidates passed Gate A")
-                return self._create_result([], universe_df, gate_a_df, pd.DataFrame(), start_time)
+                logger.info("No universe data available")
+                return self._create_result([], universe_df, pd.DataFrame(), pd.DataFrame(), start_time)
 
             # SIMPLE DEMO: Return top 5 Gate A stocks directly with minimal processing
             logger.info(f"DEMO MODE: Returning top 5 from {len(gate_a_df)} Gate A candidates")
