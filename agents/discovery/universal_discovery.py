@@ -35,10 +35,10 @@ logger = logging.getLogger('UniversalDiscovery')
 @dataclass
 class GateConfig:
     """Configuration for gate processing"""
-    # Gate A thresholds
+    # Gate A thresholds - TEMPORARILY LOWERED FOR TESTING
     # GATEA_MIN_PCT = 1.0   # REMOVED - we don't filter by percent change
-    GATEA_MIN_VOL = 300_000  # Minimum volume
-    GATEA_MIN_RVOL = 1.3     # Initial RVOL threshold
+    GATEA_MIN_VOL = 100_000  # Minimum volume (lowered from 300K)
+    GATEA_MIN_RVOL = 1.1     # Initial RVOL threshold (lowered from 1.3)
     
     # Top-K selections
     K_GATEB = 500            # Top-K after Gate A (optimized for production)
@@ -193,8 +193,8 @@ class UniversalDiscoverySystem:
                             vwap = result.get('vw', close_price)
 
                             if close_price > 0 and volume > 0:
-                                # Calculate RVOL (simplified)
-                                rvol_sust = max(1.0, volume / 500000)  # Rough estimate
+                                # Calculate RVOL (simplified - more realistic baseline)
+                                rvol_sust = max(1.0, volume / 200000)  # Adjusted for lower volume stocks
 
                                 # Calculate percent change
                                 percent_change = ((close_price - open_price) / open_price) * 100 if open_price > 0 else 0
@@ -287,7 +287,7 @@ class UniversalDiscoverySystem:
                             # NO PERCENT CHANGE CALCULATION - focus on accumulation patterns
                             
                             # Estimate RVOL (simplified - would use historical baseline in production)
-                            rvol_sust = max(1.0, volume / 500000)  # Rough RVOL estimate
+                            rvol_sust = max(1.0, volume / 200000)  # Adjusted RVOL baseline
                             
                             # Add enriched data
                             enriched_data = symbol_data.copy()
