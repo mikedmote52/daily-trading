@@ -275,6 +275,72 @@ def debug_gates():
 @app.get("/signals/top")
 async def get_top_signals():
     """Get top discovery signals (thin wrapper endpoint)"""
+    # Demo mode for testing UI
+    demo_mode = os.getenv("DEMO_MODE", "false").lower() == "true"
+
+    if demo_mode:
+        # Return sample stocks for UI demonstration
+        return {
+            "signals": [
+                {
+                    "symbol": "NVDA",
+                    "price": 875.40,
+                    "last_price": 875.40,
+                    "score": 92.5,
+                    "total_score": 92.5,
+                    "volume": 45821000,
+                    "percent_change": 2.3,
+                    "rvol_sust": 3.2
+                },
+                {
+                    "symbol": "TSLA",
+                    "price": 248.30,
+                    "last_price": 248.30,
+                    "score": 88.7,
+                    "total_score": 88.7,
+                    "volume": 38920000,
+                    "percent_change": 1.8,
+                    "rvol_sust": 2.8
+                },
+                {
+                    "symbol": "AAPL",
+                    "price": 184.50,
+                    "last_price": 184.50,
+                    "score": 85.3,
+                    "total_score": 85.3,
+                    "volume": 52100000,
+                    "percent_change": 0.9,
+                    "rvol_sust": 1.9
+                },
+                {
+                    "symbol": "AMD",
+                    "price": 142.20,
+                    "last_price": 142.20,
+                    "score": 83.1,
+                    "total_score": 83.1,
+                    "volume": 28700000,
+                    "percent_change": 3.1,
+                    "rvol_sust": 2.4
+                },
+                {
+                    "symbol": "META",
+                    "price": 512.70,
+                    "last_price": 512.70,
+                    "score": 81.9,
+                    "total_score": 81.9,
+                    "volume": 15300000,
+                    "percent_change": 1.2,
+                    "rvol_sust": 1.7
+                }
+            ],
+            "timestamp": datetime.now().isoformat(),
+            "metadata": {
+                "total_universe": 11178,
+                "final_count": 5,
+                "demo_mode": True
+            }
+        }
+
     if redis_client:
         try:
             cached_result = redis_client.get("results:latest")
