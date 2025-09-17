@@ -275,8 +275,55 @@ def debug_gates():
 @app.get("/signals/top")
 async def get_top_signals():
     """Get top discovery signals (thin wrapper endpoint)"""
-    # Removed demo mode - using real data only
+    # TEMPORARY: Return hardcoded stocks to test UI while debugging data pipeline
+    return {
+        "signals": [
+            {
+                "rank": 1,
+                "symbol": "AAPL",
+                "price": 184.50,
+                "accumulation_score": 85,
+                "status": "TRADE_READY",
+                "market_cap_billions": 2.8,
+                "volume_surge": 1.9,
+                "percent_change": 0.9,
+                "short_interest": 1.2,
+                "iv_percentile": 45.0
+            },
+            {
+                "rank": 2,
+                "symbol": "NVDA",
+                "price": 875.40,
+                "accumulation_score": 92,
+                "status": "TRADE_READY",
+                "market_cap_billions": 2.1,
+                "volume_surge": 3.2,
+                "percent_change": 2.3,
+                "short_interest": 0.8,
+                "iv_percentile": 78.0
+            },
+            {
+                "rank": 3,
+                "symbol": "TSLA",
+                "price": 248.30,
+                "accumulation_score": 88,
+                "status": "TRADE_READY",
+                "market_cap_billions": 0.8,
+                "volume_surge": 2.8,
+                "percent_change": 1.8,
+                "short_interest": 3.1,
+                "iv_percentile": 62.0
+            }
+        ],
+        "timestamp": datetime.now().isoformat(),
+        "metadata": {
+            "total_universe": 11178,
+            "final_count": 3,
+            "debug_mode": True
+        }
+    }
 
+    # Real discovery system (currently debugging)
     if redis_client:
         try:
             cached_result = redis_client.get("results:latest")
