@@ -345,13 +345,39 @@ class UniversalDiscoverySystem:
         # REMOVED: mask_change filter - we don't want stocks that already exploded
         mask_rvol = df['rvol_sust'] >= self.config.GATEA_MIN_RVOL
         
+        # DEBUG: Log individual filter results
+        logger.info(f"GATE A FILTER DEBUG:")
+        logger.info(f"  Common stock (CS): {mask_common.sum()}/{len(df)}")
+        logger.info(f"  Not excluded types: {mask_not_excluded.sum()}/{len(df)}")
+        logger.info(f"  Not ADR: {mask_not_adr.sum()}/{len(df)}")
+        logger.info(f"  Price range: {mask_price.sum()}/{len(df)}")
+        logger.info(f"  Volume >= {self.config.GATEA_MIN_VOL}: {mask_volume.sum()}/{len(df)}")
+        logger.info(f"  RVOL >= {self.config.GATEA_MIN_RVOL}: {mask_rvol.sum()}/{len(df)}")
+
         # Combine all filters
         combined_mask = (mask_common & mask_not_excluded & mask_not_adr &
                         mask_price & mask_volume & mask_rvol)
-        
+
         gate_a_output = df[combined_mask].copy().reset_index(drop=True)
-        
+
         logger.info(f"✅ GATE A OUTPUT: {len(gate_a_output)} candidates (from {len(df)} universe)")
+
+        # Show sample of what passed if any
+        if len(gate_a_output) > 0:
+            logger.info(f"Sample Gate A survivors:")
+            logger.info(gate_a_output[['symbol', 'price', 'day_volume', 'rvol_sust']].head(3).to_string())
+        else:
+            logger.info("❌ NO STOCKS PASSED GATE A - Showing sample failures:")
+            sample = df.head(5)
+            for i, (_, row) in enumerate(sample.iterrows()):
+                reasons = []
+                if not mask_common.iloc[i]: reasons.append("not CS")
+                if not mask_not_excluded.iloc[i]: reasons.append("excluded type")
+                if not mask_not_adr.iloc[i]: reasons.append("is ADR")
+                if not mask_price.iloc[i]: reasons.append(f"price ${row['price']:.2f}")
+                if not mask_volume.iloc[i]: reasons.append(f"volume {row['day_volume']:,}")
+                if not mask_rvol.iloc[i]: reasons.append(f"RVOL {row['rvol_sust']:.2f}")
+                logger.info(f"  {row['symbol']}: {', '.join(reasons) if reasons else 'PASSES ALL'}")
         return gate_a_output
     
     def topk_candidates(self, df: pd.DataFrame, k: int) -> pd.DataFrame:
