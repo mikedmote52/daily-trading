@@ -785,7 +785,12 @@ class UniversalDiscoverySystem:
         try:
             # Step 1: Full universe loading (ALL ~5,200 stocks)
             universe_df = self.bulk_ingest_universe()
-            
+
+            logger.info(f"UNIVERSE DEBUG: Loaded {len(universe_df)} stocks")
+            if len(universe_df) > 0:
+                logger.info(f"Sample columns: {list(universe_df.columns)}")
+                logger.info(f"Sample data: {universe_df.head(1).to_dict('records')}")
+
             if universe_df.empty:
                 logger.warning("No universe data loaded")
                 return self._create_empty_result(start_time)
@@ -800,23 +805,21 @@ class UniversalDiscoverySystem:
             # TEMPORARY DEBUG: Return first 5 stocks directly from Gate A
             logger.info(f"BYPASSING ALL DOWNSTREAM FILTERING - Returning first 5 stocks from {len(gate_a_df)} Gate A candidates")
 
-            # Convert first 5 stocks to final format
-            debug_stocks = []
-            for _, row in gate_a_df.head(5).iterrows():
-                stock = {
-                    'symbol': row.get('symbol', 'UNKNOWN'),
-                    'price': float(row.get('price', 0)),
-                    'last_price': float(row.get('price', 0)),
-                    'score': 85.0,  # Fixed score for testing
-                    'total_score': 85.0,
-                    'volume': int(row.get('day_volume', 0)),
-                    'percent_change': float(row.get('percent_change', 0)),
-                    'rvol_sust': float(row.get('rvol_sust', 1.0))
-                }
-                debug_stocks.append(stock)
+            # Convert first 5 stocks to expected DataFrame format
+            debug_df = gate_a_df.head(5).copy()
+
+            # Add required columns that _create_result expects
+            debug_df['status'] = 'TRADE_READY'
+            debug_df['accumulation_score'] = 85.0
+            debug_df['market_cap'] = debug_df.get('market_cap', 1e9)
+            debug_df['short_interest_pct'] = 10.0
+            debug_df['iv_percentile'] = 50.0
+
+            logger.info(f"DEBUG DF COLUMNS: {list(debug_df.columns)}")
+            logger.info(f"DEBUG DF SAMPLE: {debug_df.head(1).to_dict('records')}")
 
             # Create debug result
-            result = self._create_result(debug_stocks, universe_df, gate_a_df, gate_a_df.head(5), start_time)
+            result = self._create_result(debug_df, universe_df, gate_a_df, debug_df, start_time)
             
             logger.info("✅ UNIVERSAL DISCOVERY COMPLETE")
             self._log_summary(result)
