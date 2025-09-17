@@ -114,6 +114,39 @@ manager = ConnectionManager()
 
 # API Endpoints
 
+@app.get("/test/polygon")
+def test_polygon():
+    """Test if Polygon API is working"""
+    if not discovery_system:
+        return {"error": "Discovery system not initialized"}
+
+    api_key = discovery_system.polygon_api_key
+    if not api_key:
+        return {"error": "POLYGON_API_KEY not set"}
+
+    try:
+        import requests
+        from datetime import datetime, timedelta
+        yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+        url = f"https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/{yesterday}"
+        params = {'apikey': api_key, 'adjusted': 'true'}
+        response = requests.get(url, params=params, timeout=10)
+
+        return {
+            "polygon_configured": True,
+            "api_key_length": len(api_key),
+            "test_url": url,
+            "status_code": response.status_code,
+            "has_results": 'results' in response.json() if response.status_code == 200 else False,
+            "result_count": len(response.json().get('results', [])) if response.status_code == 200 else 0
+        }
+    except Exception as e:
+        return {
+            "polygon_configured": True,
+            "api_key_length": len(api_key),
+            "error": str(e)
+        }
+
 @app.get("/health")
 async def health_check():
     """Health check for Render deployment"""
