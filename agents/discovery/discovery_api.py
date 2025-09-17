@@ -114,6 +114,37 @@ manager = ConnectionManager()
 
 # API Endpoints
 
+@app.get("/debug/latest-scan")
+def debug_latest_scan():
+    """Get detailed debug info from the latest discovery scan"""
+    if not discovery_system:
+        return {"error": "Discovery system not initialized"}
+
+    # Run a quick diagnostic
+    try:
+        df = discovery_system.bulk_ingest_universe()
+        if len(df) > 0:
+            sample_data = df.head(3)[['symbol', 'price', 'day_volume', 'rvol_sust', 'security_type']].to_dict('records')
+
+            # Test Gate A on small sample
+            gate_a_df = discovery_system.vectorized_gate_a(df.head(10))
+
+            return {
+                "universe_size": len(df),
+                "sample_stocks": sample_data,
+                "gate_a_survivors": len(gate_a_df),
+                "gate_a_sample": gate_a_df.head(3).to_dict('records') if len(gate_a_df) > 0 else [],
+                "config": {
+                    "min_volume": discovery_system.config.GATEA_MIN_VOL,
+                    "min_rvol": discovery_system.config.GATEA_MIN_RVOL
+                }
+            }
+        else:
+            return {"error": "No universe data loaded", "universe_size": 0}
+
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.get("/test/polygon")
 def test_polygon():
     """Test if Polygon API is working"""
