@@ -105,6 +105,58 @@ function BuyButton({ symbol, price }) {
   );
 }
 
+function RunDiscoveryButton() {
+  const [running, setRunning] = useState(false);
+
+  const handleRunDiscovery = async () => {
+    if (!discoveryBase) {
+      alert("Discovery API not configured");
+      return;
+    }
+
+    setRunning(true);
+    try {
+      const response = await fetch(`${discoveryBase.replace(/\/$/, "")}/discover`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        alert(`Discovery scan started: ${result.scan_id}\nResults will update automatically.`);
+        // Refresh the page after a short delay to pick up new results
+        setTimeout(() => window.location.reload(), 3000);
+      } else {
+        alert(`Failed to start discovery scan: ${response.status}`);
+      }
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleRunDiscovery}
+      disabled={running}
+      style={{
+        background: running ? "#9ca3af" : "#2563eb",
+        color: "white",
+        border: "none",
+        padding: "8px 16px",
+        borderRadius: 4,
+        cursor: running ? "not-allowed" : "pointer",
+        fontSize: 14,
+        fontWeight: "bold",
+        marginBottom: 16
+      }}
+    >
+      {running ? "Running Discovery..." : "🔍 Run Discovery Scan"}
+    </button>
+  );
+}
+
 function App() {
   const d = useHealth(discoveryBase);
   const o = useHealth(ordersBase);
@@ -138,12 +190,14 @@ function App() {
       <div>
         <h2 style={{ fontSize: 24, margin: "0 0 16px 0" }}>Discovered Stocks</h2>
 
+        <RunDiscoveryButton />
+
         {stocks.loading && <p>Loading stocks...</p>}
         {stocks.error && <p style={{ color: "#dc2626" }}>Error: {stocks.error}</p>}
 
         {stocks.data.length === 0 && !stocks.loading && !stocks.error && (
           <p style={{ color: "#666" }}>
-            No stocks discovered yet. Run a discovery scan or check the Discovery API.
+            No stocks discovered yet. Click "Run Discovery Scan" above to find explosive opportunities.
           </p>
         )}
 
