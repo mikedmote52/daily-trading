@@ -350,13 +350,14 @@ async def get_top_signals():
             if cached_result:
                 result = json.loads(cached_result)
                 # Extract top signals if available
-                if "final_recommendations" in result:
+                if "results" in result:
                     return {
-                        "signals": result["final_recommendations"][:10],  # Top 10
+                        "signals": result["results"][:10],  # Top 10
                         "timestamp": result.get("timestamp"),
                         "metadata": {
                             "total_universe": result.get("universe_coverage", {}).get("total_universe", 0),
-                            "final_count": len(result.get("final_recommendations", []))
+                            "final_count": len(result.get("results", [])),
+                            "demo_mode": False
                         }
                     }
         except Exception as e:
@@ -366,11 +367,12 @@ async def get_top_signals():
     try:
         result = discovery_system.run_universal_discovery()
         return {
-            "signals": result.get("final_recommendations", [])[:10],
+            "signals": result.get("results", [])[:10],  # Fixed: use 'results' not 'final_recommendations'
             "timestamp": result.get("timestamp"),
             "metadata": {
                 "total_universe": result.get("universe_coverage", {}).get("total_universe", 0),
-                "final_count": len(result.get("final_recommendations", []))
+                "final_count": len(result.get("results", [])),
+                "demo_mode": False  # Real data
             }
         }
     except Exception as e:
