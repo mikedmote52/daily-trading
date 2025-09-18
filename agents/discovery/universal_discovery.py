@@ -570,11 +570,25 @@ class UniversalDiscoverySystem:
         
         df = df.copy()
         
-        # Accumulation scoring system - NO percentage change
-        # Bucket 1: Volume Pattern (40%) - higher weight for volume
-        volume_score = np.clip((df['rvol_sust'] - 1) * 30, 0, 100)
+        # Accumulation scoring system - Enhanced volume differentiation
+        # Bucket 1: Volume Pattern (40%) - Proper scaling for massive surges
+        rvol = df['rvol_sust'].fillna(1.0)
+
+        # Progressive scoring for volume surges (wider differentiation)
+        volume_score = np.where(rvol >= 2000, 100,   # 2000x+ = Perfect (100)
+                       np.where(rvol >= 1000, 98,    # 1000x+ = Exceptional (98)
+                       np.where(rvol >= 500, 95,     # 500x+ = Excellent (95)
+                       np.where(rvol >= 200, 90,     # 200x+ = Very High (90)
+                       np.where(rvol >= 100, 85,     # 100x+ = High (85)
+                       np.where(rvol >= 50, 80,      # 50x+ = Good (80)
+                       np.where(rvol >= 20, 75,      # 20x+ = Decent (75)
+                       np.where(rvol >= 10, 65,      # 10x+ = Fair (65)
+                       np.where(rvol >= 5, 55,       # 5x+ = Poor (55)
+                       np.where(rvol >= 3, 45,       # 3x+ = Very Poor (45)
+                       20))))))))))                  # <3x = Terrible (20)
+
         volume_consistency = np.clip(df['day_volume'] / 1000000 * 10, 0, 100)
-        bucket_volume = (volume_score * 0.7 + volume_consistency * 0.3)
+        bucket_volume = (volume_score * 0.8 + volume_consistency * 0.2)  # Emphasize surge magnitude
         
         # Bucket 2: Float & Technical Setup (30%) - handle NaN values
         float_score = np.where(pd.isna(df['float_shares']), 50,
@@ -591,12 +605,23 @@ class UniversalDiscoverySystem:
                    np.clip(df['call_put_oi_ratio'] * 30, 0, 100))
         bucket_options = (iv_score * 0.7 + oi_score * 0.3)
         
-        # Bucket 4: Positioning (10%) - handle NaN values
+        # Bucket 4: Positioning (10%) - Enhanced with momentum
         vwap_score = np.where(pd.isna(df['last']) | pd.isna(df['vwap']), 50,
                      np.where(df['last'] > df['vwap'], 100, 0))
         ema_score = np.where(pd.isna(df['ema9']) | pd.isna(df['ema20']), 50,
                     np.where(df['ema9'] > df['ema20'], 100, 0))
-        bucket_technical = (vwap_score * 0.5 + ema_score * 0.5)
+
+        # Add price momentum component for differentiation
+        momentum_score = np.where(df['percent_change'] >= 15, 100,  # 15%+ = Explosive
+                         np.where(df['percent_change'] >= 10, 90,   # 10%+ = Very Strong
+                         np.where(df['percent_change'] >= 7, 85,    # 7%+ = Strong
+                         np.where(df['percent_change'] >= 5, 80,    # 5%+ = Good
+                         np.where(df['percent_change'] >= 3, 75,    # 3%+ = Decent
+                         np.where(df['percent_change'] >= 1, 65,    # 1%+ = Fair
+                         np.where(df['percent_change'] >= 0, 50,    # 0%+ = Neutral
+                         30)))))))                                  # Negative = Poor
+
+        bucket_technical = (vwap_score * 0.3 + ema_score * 0.3 + momentum_score * 0.4)  # Weight momentum
         
         # Weighted final accumulation score
         df['accumulation_score'] = np.clip(
