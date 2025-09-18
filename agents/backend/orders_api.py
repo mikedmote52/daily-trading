@@ -2,7 +2,7 @@
 """
 AlphaStack Orders API - Alpaca Paper Trading Integration
 Handles bracket orders with stop-loss and take-profit for discovered stocks
-Updated: 2025-09-18 - API credentials configured
+Updated: 2025-09-18 - API credentials configured - Force restart for auth fix
 """
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
