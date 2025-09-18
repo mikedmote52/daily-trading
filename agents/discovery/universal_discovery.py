@@ -438,25 +438,25 @@ class UniversalDiscoverySystem:
     
     def vectorized_gate_b(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Step 4: Gate B still universal (join-only), then tighten
-        Market cap, volatility, momentum filtering using ONLY cached data
+        Gate B: Fundamental filtering - ATR and trend based
+        Market cap filtering removed due to data availability issues
         """
-        logger.info(f"🚪 GATE B: Market cap and trend filtering on {len(df)} candidates...")
-        
-        # Market cap filters
-        mask_mcap = ((df['market_cap'] >= self.config.MIN_MARKET_CAP) & 
-                    (df['market_cap'] <= self.config.MAX_MARKET_CAP))
-        
-        # ATR/volatility filter
+        logger.info(f"🚪 GATE B: ATR and trend filtering on {len(df)} candidates...")
+
+        # ATR/volatility filter - stocks with good trading range
         mask_atr = df['atr_pct'] >= 4.0
-        
-        # Trend filter
+        atr_passed = mask_atr.sum()
+        logger.info(f"  ATR filter (≥4%): {atr_passed}/{len(df)} stocks passed")
+
+        # Trend filter - stocks with positive momentum
         mask_trend = df['trend_3d'] > 0
-        
+        trend_passed = mask_trend.sum()
+        logger.info(f"  Trend filter (positive 3d): {trend_passed}/{len(df)} stocks passed")
+
         # Combine filters
-        combined_mask = mask_mcap & mask_atr & mask_trend
+        combined_mask = mask_atr & mask_trend
         gate_b_output = df[combined_mask].copy().reset_index(drop=True)
-        
+
         logger.info(f"✅ GATE B OUTPUT: {len(gate_b_output)} candidates")
         return gate_b_output
     
@@ -537,15 +537,15 @@ class UniversalDiscoverySystem:
         if len(df) == 0:
             return df
 
-        # Market cap filter (we have this data)
-        mcap_mask = (df['market_cap'].notna() &
-                     (df['market_cap'] >= 100e6) &
-                     (df['market_cap'] <= 50e9))
-        df = df[mcap_mask].copy()
-        logger.info(f"   Market cap filter: {len(df)}/{initial_count} ({mcap_mask.sum()} passed)")
+        # Market cap filter - DISABLED due to data availability
+        # Most stocks have market_cap=None from Polygon API
+        logger.info(f"   Market cap filter: SKIPPED (data unavailable)")
+        # mcap_mask = (df['market_cap'].notna() &
+        #              (df['market_cap'] >= 100e6) &
+        #              (df['market_cap'] <= 50e9))
+        # df = df[mcap_mask].copy()
 
-        if len(df) == 0:
-            return df
+        # Continue without market cap filtering
 
         # ATR filter (we have calculated this)
         atr_mask = (df['atr_pct'].notna() & (df['atr_pct'] >= 4.0))
@@ -844,50 +844,28 @@ class UniversalDiscoverySystem:
                 logger.info("No universe data available")
                 return self._create_result([], universe_df, pd.DataFrame(), pd.DataFrame(), start_time)
 
-            # BYPASS ENTIRE PIPELINE - RETURN HARDCODED RESULT
-            logger.info(f"🚨 BYPASSING ENTIRE PIPELINE - Creating hardcoded result")
+            # Step 3: Gate B - Fundamental Filtering
+            logger.info(f"🚪 GATE B: Processing {len(gate_a_df)} stocks...")
+            gate_b_df = self.vectorized_gate_b(gate_a_df)
 
-            # Create hardcoded result directly
-            hardcoded_stocks = [
-                {
-                    'rank': 1,
-                    'symbol': 'AAPL',
-                    'price': 184.50,
-                    'accumulation_score': 85,
-                    'status': 'TRADE_READY',
-                    'market_cap_billions': 2.8,
-                    'volume_surge': 1.9,
-                    'percent_change': 0.9,
-                    'short_interest': 1.2,
-                    'iv_percentile': 45.0
-                },
-                {
-                    'rank': 2,
-                    'symbol': 'NVDA',
-                    'price': 875.40,
-                    'accumulation_score': 92,
-                    'status': 'TRADE_READY',
-                    'market_cap_billions': 2.1,
-                    'volume_surge': 3.2,
-                    'percent_change': 2.3,
-                    'short_interest': 0.8,
-                    'iv_percentile': 78.0
-                }
-            ]
+            if gate_b_df.empty:
+                logger.warning("No stocks passed Gate B")
+                return self._create_result([], universe_df, gate_a_df, pd.DataFrame(), start_time)
 
-            result = {
-                'final_recommendations': hardcoded_stocks,
-                'timestamp': datetime.now().isoformat(),
-                'universe_coverage': {
-                    'total_universe': len(universe_df),
-                    'gate_a_survivors': len(gate_a_df)
-                },
-                'processing_time': time.time() - start_time
-            }
-            
+            # Step 4: Gate C - Final Accumulation Scoring
+            logger.info(f"🚪 GATE C: Processing {len(gate_b_df)} stocks...")
+            final_candidates = self.gate_c_enrichment(gate_b_df)
+
+            if final_candidates.empty:
+                logger.warning("No stocks passed Gate C")
+                return self._create_result([], universe_df, gate_a_df, gate_b_df, start_time)
+
+            # Step 5: Create final result
+            result = self._create_result(final_candidates, universe_df, gate_a_df, gate_b_df, start_time)
+
             logger.info("✅ UNIVERSAL DISCOVERY COMPLETE")
             self._log_summary(result)
-            
+
             return result
             
         except Exception as e:
