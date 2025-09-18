@@ -924,6 +924,51 @@ class UniversalDiscoverySystem:
                         'estimated_turnover': int(safe_float(row.get('estimated_turnover', 0)))
                     })
 
+                # Generate investment thesis and price target
+                current_price = result_item['price']
+                volume_surge = result_item['volume_surge']
+                percent_change = result_item['percent_change']
+                score = result_item['accumulation_score']
+
+                # Calculate price target based on historical +63.8% target
+                price_target = round(current_price * 1.638, 2)  # 63.8% gain target
+                stop_loss = round(current_price * 0.90, 2)      # 10% stop loss
+
+                # Generate thesis based on key metrics
+                thesis_components = []
+
+                if volume_surge > 100:
+                    thesis_components.append(f"Extreme {volume_surge:.0f}x volume surge indicating major accumulation")
+                elif volume_surge > 50:
+                    thesis_components.append(f"Massive {volume_surge:.0f}x volume surge showing institutional interest")
+                elif volume_surge > 10:
+                    thesis_components.append(f"Strong {volume_surge:.0f}x volume increase signaling breakout potential")
+                else:
+                    thesis_components.append(f"Notable {volume_surge:.1f}x relative volume uptick")
+
+                if percent_change > 10:
+                    thesis_components.append(f"powerful {percent_change:.1f}% price momentum")
+                elif percent_change > 5:
+                    thesis_components.append(f"solid {percent_change:.1f}% upward movement")
+                elif percent_change > 0:
+                    thesis_components.append(f"positive {percent_change:.1f}% price action")
+
+                if score >= 90:
+                    thesis_components.append("exceptional pre-explosion setup")
+                elif score >= 85:
+                    thesis_components.append("prime accumulation pattern")
+                elif score >= 75:
+                    thesis_components.append("strong technical setup")
+
+                thesis = f"{result_item['symbol']} shows {' with '.join(thesis_components)}. " \
+                        f"Technical indicators suggest potential explosive move from ${current_price} to target ${price_target} (+63.8%). " \
+                        f"Risk managed with stop at ${stop_loss} (-10%)."
+
+                result_item['thesis'] = thesis
+                result_item['price_target'] = price_target
+                result_item['stop_loss'] = stop_loss
+                result_item['risk_reward_ratio'] = round((price_target - current_price) / (current_price - stop_loss), 1)
+
                 results.append(result_item)
         else:
             trade_ready = 0

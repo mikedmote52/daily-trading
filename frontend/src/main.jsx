@@ -64,13 +64,20 @@ function BuyButton({ symbol, price }) {
 
     setBuying(true);
     try {
-      const response = await fetch(`${ordersBase.replace(/\/$/, "")}/orders/buy`, {
+      // Generate unique idempotency key
+      const idempotencyKey = `order-${symbol}-${Date.now()}`;
+
+      const response = await fetch(`${ordersBase.replace(/\/$/, "")}/orders`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': idempotencyKey
+        },
         body: JSON.stringify({
-          symbol,
-          quantity: 10,
-          price
+          ticker: symbol,
+          notional_usd: 1000,  // $1000 per position
+          last_price: price,
+          side: 'buy'
         })
       });
 
@@ -216,17 +223,43 @@ function App() {
               <tbody>
                 {stocks.data.map((stock, i) => (
                   <tr key={stock.symbol || i}>
-                    <td style={{ padding: "8px 12px", border: "1px solid #e2e8f0", fontWeight: "bold" }}>
-                      {stock.symbol}
+                    <td style={{ padding: "8px 12px", border: "1px solid #e2e8f0" }}>
+                      <div>
+                        <strong>{stock.symbol}</strong>
+                        {stock.thesis && (
+                          <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4, maxWidth: 400 }}>
+                            {stock.thesis}
+                          </div>
+                        )}
+                      </div>
                     </td>
                     <td style={{ padding: "8px 12px", border: "1px solid #e2e8f0", textAlign: "right" }}>
-                      ${(stock.price || stock.last_price || 0).toFixed(2)}
+                      <div>
+                        <div>${(stock.price || stock.last_price || 0).toFixed(2)}</div>
+                        {stock.price_target && (
+                          <div style={{ fontSize: 11, color: "#10b981" }}>
+                            Target: ${stock.price_target}
+                          </div>
+                        )}
+                        {stock.stop_loss && (
+                          <div style={{ fontSize: 11, color: "#ef4444" }}>
+                            Stop: ${stock.stop_loss}
+                          </div>
+                        )}
+                      </div>
                     </td>
                     <td style={{ padding: "8px 12px", border: "1px solid #e2e8f0", textAlign: "right" }}>
-                      {(stock.score || stock.total_score || 0).toFixed(2)}
+                      <div>
+                        <div>{(stock.score || stock.accumulation_score || stock.total_score || 0).toFixed(0)}</div>
+                        {stock.risk_reward_ratio && (
+                          <div style={{ fontSize: 11, color: "#3b82f6" }}>
+                            R:R {stock.risk_reward_ratio}:1
+                          </div>
+                        )}
+                      </div>
                     </td>
                     <td style={{ padding: "8px 12px", border: "1px solid #e2e8f0", textAlign: "right" }}>
-                      {(stock.volume || 0).toLocaleString()}
+                      {stock.volume_surge ? `${stock.volume_surge}x` : (stock.volume || 0).toLocaleString()}
                     </td>
                     <td style={{ padding: "8px 12px", border: "1px solid #e2e8f0", textAlign: "center" }}>
                       <BuyButton
