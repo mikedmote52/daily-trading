@@ -79,34 +79,44 @@ class UniversalDiscoverySystem:
         else:
             logger.info("⚠️  Using direct HTTP requests to Polygon API")
 
-    def calculate_realistic_rvol(self, current_volume: int, price: float) -> float:
+    def get_real_historical_volume(self, symbol: str, current_volume: int) -> float:
         """
-        Calculate realistic RVOL using price-based volume estimates
-        This is much faster than individual API calls for each stock
+        Calculate REAL RVOL using actual historical volume data from Polygon API
+        This replaces the completely broken estimation system
         """
-        # Use price-based volume estimates that are more realistic than 200,000 for all stocks
-        if price < 2.0:
-            # Penny stocks typically have higher volume
-            estimated_avg_volume = 500000
-        elif price < 10.0:
-            # Low-price stocks
-            estimated_avg_volume = 300000
-        elif price < 50.0:
-            # Mid-price stocks
-            estimated_avg_volume = 200000
-        elif price < 100.0:
-            # Higher-price stocks
-            estimated_avg_volume = 150000
-        else:
-            # High-price stocks typically have lower volume
-            estimated_avg_volume = 100000
+        try:
+            # Get 20-day historical volume data from Polygon
+            end_date = datetime.now() - timedelta(days=1)
+            start_date = end_date - timedelta(days=30)  # Get 30 days to ensure 20 trading days
 
-        # Calculate RVOL with realistic baseline
-        rvol = max(1.0, current_volume / estimated_avg_volume)
+            url = f"https://api.polygon.io/v2/aggs/ticker/{symbol}/range/1/day/{start_date.strftime('%Y-%m-%d')}/{end_date.strftime('%Y-%m-%d')}"
+            params = {
+                'apikey': self.polygon_api_key,
+                'adjusted': 'true',
+                'sort': 'desc',
+                'limit': 25
+            }
 
-        # Allow true explosive surges - no artificial cap
-        # Real explosive moves can be 50x, 100x, 500x+ volume
-        return rvol
+            response = requests.get(url, params=params, timeout=15)
+            if response.status_code == 200:
+                data = response.json()
+                if 'results' in data and data['results'] and len(data['results']) >= 5:
+                    # Get actual historical volumes (last 20 trading days)
+                    volumes = [result.get('v', 0) for result in data['results'][-20:]]
+                    if volumes and len(volumes) >= 5:
+                        historical_avg = sum(volumes) / len(volumes)
+                        if historical_avg > 0:
+                            real_rvol = current_volume / historical_avg
+                            logger.info(f"   📊 {symbol}: Current {current_volume:,} vs Avg {historical_avg:,.0f} = {real_rvol:.2f}x REAL RVOL")
+                            return max(1.0, real_rvol)
+
+            # If we can't get real data, return 1.0 (no surge) rather than fake data
+            logger.warning(f"   ⚠️  {symbol}: Could not get historical volume data, defaulting to 1.0x")
+            return 1.0
+
+        except Exception as e:
+            logger.error(f"   ❌ {symbol}: Historical volume fetch failed: {e}")
+            return 1.0
 
     def _test_date_availability(self, date_str: str) -> bool:
         """Test if a date has trading data available"""
@@ -222,8 +232,8 @@ class UniversalDiscoverySystem:
                             vwap = result.get('vw', close_price)
 
                             if close_price > 0 and volume > 0:
-                                # Calculate realistic RVOL using price-based estimates
-                                rvol_sust = self.calculate_realistic_rvol(volume, close_price)
+                                # Calculate REAL RVOL using actual historical volume data
+                                rvol_sust = self.get_real_historical_volume(symbol, volume)
 
                                 # Calculate percent change
                                 percent_change = ((close_price - open_price) / open_price) * 100 if open_price > 0 else 0
@@ -315,8 +325,8 @@ class UniversalDiscoverySystem:
                         if close_price > 0 and volume > 0:
                             # NO PERCENT CHANGE CALCULATION - focus on accumulation patterns
 
-                            # Calculate realistic RVOL using price-based estimates
-                            rvol_sust = self.calculate_realistic_rvol(volume, close_price)
+                            # Calculate REAL RVOL using actual historical volume data
+                            rvol_sust = self.get_real_historical_volume(symbol, volume)
                             
                             # Add enriched data
                             enriched_data = symbol_data.copy()
