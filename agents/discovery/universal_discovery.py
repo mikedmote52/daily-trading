@@ -79,40 +79,33 @@ class UniversalDiscoverySystem:
         else:
             logger.info("⚠️  Using direct HTTP requests to Polygon API")
 
-    def get_historical_volume_average(self, symbol: str, days: int = 20) -> float:
+    def calculate_realistic_rvol(self, current_volume: int, price: float) -> float:
         """
-        Get historical volume average for a symbol using Polygon API
-        Returns 20-day average volume for RVOL calculation
+        Calculate realistic RVOL using price-based volume estimates
+        This is much faster than individual API calls for each stock
         """
-        try:
-            # Get date range for historical data
-            end_date = datetime.now() - timedelta(days=1)  # Yesterday
-            start_date = end_date - timedelta(days=days + 10)  # Extra buffer for weekends
+        # Use price-based volume estimates that are more realistic than 200,000 for all stocks
+        if price < 2.0:
+            # Penny stocks typically have higher volume
+            estimated_avg_volume = 500000
+        elif price < 10.0:
+            # Low-price stocks
+            estimated_avg_volume = 300000
+        elif price < 50.0:
+            # Mid-price stocks
+            estimated_avg_volume = 200000
+        elif price < 100.0:
+            # Higher-price stocks
+            estimated_avg_volume = 150000
+        else:
+            # High-price stocks typically have lower volume
+            estimated_avg_volume = 100000
 
-            url = f"https://api.polygon.io/v2/aggs/ticker/{symbol}/range/1/day/{start_date.strftime('%Y-%m-%d')}/{end_date.strftime('%Y-%m-%d')}"
-            params = {
-                'apikey': self.polygon_api_key,
-                'adjusted': 'true',
-                'sort': 'desc',
-                'limit': days
-            }
+        # Calculate RVOL with realistic baseline
+        rvol = max(1.0, current_volume / estimated_avg_volume)
 
-            response = requests.get(url, params=params, timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                if 'results' in data and data['results']:
-                    volumes = [result.get('v', 0) for result in data['results'][-days:]]  # Last N days
-                    if volumes and len(volumes) >= 5:  # Need at least 5 days of data
-                        avg_volume = sum(volumes) / len(volumes)
-                        return avg_volume
-
-            # Fallback to typical volume estimate based on stock price
-            # This provides a more realistic baseline than the arbitrary 200,000
-            return 100000  # Conservative baseline for unknown stocks
-
-        except Exception as e:
-            logger.warning(f"Could not fetch historical volume for {symbol}: {e}")
-            return 100000  # Conservative fallback
+        # Cap extreme outliers to prevent fake surges
+        return min(rvol, 50.0)  # Maximum 50x surge is already very extreme
 
     def _test_date_availability(self, date_str: str) -> bool:
         """Test if a date has trading data available"""
@@ -228,9 +221,8 @@ class UniversalDiscoverySystem:
                             vwap = result.get('vw', close_price)
 
                             if close_price > 0 and volume > 0:
-                                # Calculate REAL RVOL using historical average
-                                historical_avg = self.get_historical_volume_average(symbol)
-                                rvol_sust = max(1.0, volume / historical_avg) if historical_avg > 0 else 1.0
+                                # Calculate realistic RVOL using price-based estimates
+                                rvol_sust = self.calculate_realistic_rvol(volume, close_price)
 
                                 # Calculate percent change
                                 percent_change = ((close_price - open_price) / open_price) * 100 if open_price > 0 else 0
@@ -322,9 +314,8 @@ class UniversalDiscoverySystem:
                         if close_price > 0 and volume > 0:
                             # NO PERCENT CHANGE CALCULATION - focus on accumulation patterns
 
-                            # Calculate REAL RVOL using historical average
-                            historical_avg = self.get_historical_volume_average(symbol)
-                            rvol_sust = max(1.0, volume / historical_avg) if historical_avg > 0 else 1.0
+                            # Calculate realistic RVOL using price-based estimates
+                            rvol_sust = self.calculate_realistic_rvol(volume, close_price)
                             
                             # Add enriched data
                             enriched_data = symbol_data.copy()
