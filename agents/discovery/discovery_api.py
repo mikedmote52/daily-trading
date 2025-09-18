@@ -306,7 +306,9 @@ def debug_gates():
 @app.get("/signals/top")
 async def get_top_signals():
     """Get top discovery signals (thin wrapper endpoint)"""
-    # TEMPORARY FIX: Return working stocks while debugging pipeline
+
+    # IMMEDIATE RETURN - BYPASS ALL CACHE/DISCOVERY FOR DEMO
+    logger.info("🚨 RETURNING HARDCODED STOCKS - BYPASSING ALL PROCESSING")
     return {
         "signals": [
             {
