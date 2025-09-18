@@ -818,23 +818,11 @@ class UniversalDiscoverySystem:
                 logger.info(f"  ADR status: {universe_df['is_adr'].value_counts().to_dict()}")
 
             if universe_df.empty:
-                logger.warning("No universe data loaded from Polygon - API key invalid or MCP unavailable")
-                # Since we have 11,178 being reported but empty processing, the issue is format incompatibility
-                # Let's create sample universe data for demo
-                sample_data = [
-                    {'symbol': 'AAPL', 'price': 184.50, 'day_volume': 52000000, 'rvol_sust': 1.9, 'percent_change': 0.9, 'security_type': 'CS', 'is_adr': False, 'market_cap': 2.8e12},
-                    {'symbol': 'NVDA', 'price': 875.40, 'day_volume': 45000000, 'rvol_sust': 3.2, 'percent_change': 2.3, 'security_type': 'CS', 'is_adr': False, 'market_cap': 2.1e12},
-                    {'symbol': 'TSLA', 'price': 248.30, 'day_volume': 39000000, 'rvol_sust': 2.8, 'percent_change': 1.8, 'security_type': 'CS', 'is_adr': False, 'market_cap': 800e9},
-                    {'symbol': 'AMD', 'price': 142.20, 'day_volume': 29000000, 'rvol_sust': 2.4, 'percent_change': 3.1, 'security_type': 'CS', 'is_adr': False, 'market_cap': 230e9},
-                    {'symbol': 'META', 'price': 512.70, 'day_volume': 15000000, 'rvol_sust': 1.7, 'percent_change': 1.2, 'security_type': 'CS', 'is_adr': False, 'market_cap': 1.3e12},
-                    {'symbol': 'GOOGL', 'price': 171.50, 'day_volume': 18000000, 'rvol_sust': 1.4, 'percent_change': 0.8, 'security_type': 'CS', 'is_adr': False, 'market_cap': 2.1e12},
-                    {'symbol': 'MSFT', 'price': 428.20, 'day_volume': 22000000, 'rvol_sust': 1.6, 'percent_change': 0.5, 'security_type': 'CS', 'is_adr': False, 'market_cap': 3.2e12},
-                    {'symbol': 'AMZN', 'price': 145.80, 'day_volume': 25000000, 'rvol_sust': 2.1, 'percent_change': 1.1, 'security_type': 'CS', 'is_adr': False, 'market_cap': 1.5e12},
-                    {'symbol': 'GOOG', 'price': 172.30, 'day_volume': 16000000, 'rvol_sust': 1.3, 'percent_change': 0.7, 'security_type': 'CS', 'is_adr': False, 'market_cap': 2.1e12},
-                    {'symbol': 'NFLX', 'price': 485.60, 'day_volume': 12000000, 'rvol_sust': 1.8, 'percent_change': 2.1, 'security_type': 'CS', 'is_adr': False, 'market_cap': 210e9},
-                ]
-                universe_df = pd.DataFrame(sample_data)
-                logger.info(f"Created sample universe with {len(universe_df)} stocks for demo")
+                logger.error("❌ CRITICAL: No universe data loaded from Polygon API")
+                logger.error("   API key status: POLYGON_API_KEY is set" if self.polygon_api_key else "   API key status: POLYGON_API_KEY is MISSING")
+                logger.error("   NO MOCK DATA ALLOWED - System will return empty results")
+                # FAIL FAST - DO NOT CREATE MOCK DATA
+                return self._create_empty_result(start_time)
             
             # Step 2: Vectorized Gate A (entire universe)
             logger.info(f"🚪 GATE A: Processing {len(universe_df)} stocks...")
