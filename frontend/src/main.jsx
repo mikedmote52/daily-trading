@@ -85,10 +85,9 @@ function BuyButton({ symbol, price, stopLoss, priceTarget }) {
         },
         body: JSON.stringify({
           ticker: symbol,
-          qty: shares,
-          side: 'buy',
-          type: 'market',
-          time_in_force: 'day'
+          notional_usd: actualInvestment,
+          last_price: price,
+          side: 'buy'
         })
       });
 
