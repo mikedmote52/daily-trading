@@ -354,11 +354,14 @@ class UniversalDiscoverySystem:
         logger.info(f"  Volume >= {self.config.GATEA_MIN_VOL}: {mask_volume.sum()}/{len(df)}")
         logger.info(f"  RVOL >= {self.config.GATEA_MIN_RVOL}: {mask_rvol.sum()}/{len(df)}")
 
-        # Combine all filters
-        combined_mask = (mask_common & mask_not_excluded & mask_not_adr &
-                        mask_price & mask_volume & mask_rvol)
+        # TEMPORARILY BYPASS ALL FILTERS - TAKE FIRST 10 STOCKS
+        logger.info("🚨 BYPASSING ALL GATE A FILTERS - Taking first 10 stocks for diagnosis")
+        gate_a_output = df.head(10).copy().reset_index(drop=True)
 
-        gate_a_output = df[combined_mask].copy().reset_index(drop=True)
+        # # Combine all filters
+        # combined_mask = (mask_common & mask_not_excluded & mask_not_adr &
+        #                 mask_price & mask_volume & mask_rvol)
+        # gate_a_output = df[combined_mask].copy().reset_index(drop=True)
 
         logger.info(f"✅ GATE A OUTPUT: {len(gate_a_output)} candidates (from {len(df)} universe)")
 
