@@ -932,21 +932,38 @@ class UniversalDiscoverySystem:
                         return default
 
                 # Enhanced result with new trade-ready scoring
+                # Only include fields with real data, not fake defaults
                 result_item = {
                     'rank': len(results) + 1,
                     'symbol': row['symbol'],
                     'price': round(safe_float(row['price']), 2),
                     'accumulation_score': int(safe_float(row['accumulation_score'])),
                     'status': row['status'],
-                    'market_cap_billions': round(safe_float(row['market_cap']) / 1e9, 2),
                     'volume_surge': round(safe_float(row['rvol_sust'], 1.0), 1),
                     'percent_change': round(safe_float(row['percent_change']), 1),
-                    'short_interest': round(safe_float(row['short_interest_pct']), 1),
-                    'iv_percentile': round(safe_float(row['iv_percentile'], 50.0), 1),
-                    'sector': row['sector'] if row['sector'] is not None else 'Unknown',
-                    'bucket_scores': row['bucket_scores'] if row['bucket_scores'] is not None else {},
                     'warnings': row.get('warnings', [])
                 }
+
+                # Only add fields with real data (no fake defaults)
+                market_cap = safe_float(row.get('market_cap', 0))
+                if market_cap > 0:
+                    result_item['market_cap_billions'] = round(market_cap / 1e9, 2)
+
+                short_interest = safe_float(row.get('short_interest_pct', 0))
+                if short_interest > 0:
+                    result_item['short_interest'] = round(short_interest, 1)
+
+                iv_percentile = safe_float(row.get('iv_percentile', 0))
+                if iv_percentile > 0 and iv_percentile != 50.0:  # Don't show fake 50.0 default
+                    result_item['iv_percentile'] = round(iv_percentile, 1)
+
+                sector = row.get('sector')
+                if sector and sector != 'Unknown':
+                    result_item['sector'] = sector
+
+                bucket_scores = row.get('bucket_scores')
+                if bucket_scores and isinstance(bucket_scores, dict) and any(v > 0 for v in bucket_scores.values()):
+                    result_item['bucket_scores'] = bucket_scores
 
                 # Add advanced trade-ready fields if available
                 if 'composite_score' in row:

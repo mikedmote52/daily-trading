@@ -53,8 +53,19 @@ function useStocks() {
   return stocks;
 }
 
-function BuyButton({ symbol, price }) {
+function BuyButton({ symbol, price, stopLoss, priceTarget }) {
+  const [showModal, setShowModal] = useState(false);
+  const [positionSize, setPositionSize] = useState(1000);
   const [buying, setBuying] = useState(false);
+
+  const shares = Math.floor(positionSize / price);
+  const actualInvestment = shares * price;
+  const stopLossPrice = stopLoss || (price * 0.9);  // 10% stop if not provided
+  const profitTarget = priceTarget || (price * 1.638);  // 63.8% target if not provided
+
+  const maxLoss = actualInvestment - (shares * stopLossPrice);
+  const maxProfit = (shares * profitTarget) - actualInvestment;
+  const riskReward = maxProfit / maxLoss;
 
   const handleBuy = async () => {
     if (!ordersBase) {
@@ -64,7 +75,6 @@ function BuyButton({ symbol, price }) {
 
     setBuying(true);
     try {
-      // Generate unique idempotency key
       const idempotencyKey = `order-${symbol}-${Date.now()}`;
 
       const response = await fetch(`${ordersBase.replace(/\/$/, "")}/orders`, {
@@ -75,39 +85,106 @@ function BuyButton({ symbol, price }) {
         },
         body: JSON.stringify({
           ticker: symbol,
-          notional_usd: 1000,  // $1000 per position
-          last_price: price,
-          side: 'buy'
+          qty: shares,
+          side: 'buy',
+          type: 'market',
+          time_in_force: 'day'
         })
       });
 
       if (response.ok) {
-        alert(`Buy order submitted for ${symbol}`);
+        const result = await response.json();
+        alert(`✅ Buy order submitted for ${shares} shares of ${symbol}\n💰 Total: $${actualInvestment.toFixed(2)}\n🛑 Stop Loss: $${stopLossPrice.toFixed(2)}\n🎯 Profit Target: $${profitTarget.toFixed(2)}`);
+        setShowModal(false);
       } else {
-        alert(`Failed to submit order: ${response.status}`);
+        const error = await response.text();
+        alert(`❌ Failed to submit order: ${error}`);
       }
     } catch (err) {
-      alert(`Error: ${err.message}`);
+      alert(`❌ Error: ${err.message}`);
     } finally {
       setBuying(false);
     }
   };
 
+  if (showModal) {
+    return (
+      <div style={{
+        position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+        background: "rgba(0,0,0,0.8)", display: "flex",
+        alignItems: "center", justifyContent: "center", zIndex: 1000
+      }}>
+        <div style={{
+          background: "white", padding: 24, borderRadius: 8,
+          maxWidth: 400, width: "90%"
+        }}>
+          <h3 style={{ margin: "0 0 16px 0" }}>Buy {symbol} at ${price}</h3>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: "block", marginBottom: 4, fontWeight: "bold" }}>
+              Position Size ($)
+            </label>
+            <input
+              type="number"
+              value={positionSize}
+              onChange={(e) => setPositionSize(Number(e.target.value))}
+              style={{
+                width: "100%", padding: 8, border: "1px solid #ddd",
+                borderRadius: 4, fontSize: 14
+              }}
+            />
+          </div>
+
+          <div style={{
+            background: "#f8fafc", padding: 12, borderRadius: 4,
+            marginBottom: 16, fontSize: 13
+          }}>
+            <div><strong>Shares:</strong> {shares.toLocaleString()}</div>
+            <div><strong>Actual Investment:</strong> ${actualInvestment.toFixed(2)}</div>
+            <div style={{ color: "#dc2626" }}><strong>Stop Loss:</strong> ${stopLossPrice.toFixed(2)} (Max Loss: ${maxLoss.toFixed(2)})</div>
+            <div style={{ color: "#16a34a" }}><strong>Profit Target:</strong> ${profitTarget.toFixed(2)} (Max Profit: ${maxProfit.toFixed(2)})</div>
+            <div><strong>Risk:Reward:</strong> 1:{riskReward.toFixed(1)}</div>
+          </div>
+
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={handleBuy}
+              disabled={buying || shares === 0}
+              style={{
+                flex: 1, background: buying ? "#9ca3af" : "#16a34a",
+                color: "white", border: "none", padding: "10px 16px",
+                borderRadius: 4, cursor: buying ? "not-allowed" : "pointer",
+                fontSize: 14, fontWeight: "bold"
+              }}
+            >
+              {buying ? "Placing Order..." : `Buy ${shares} Shares`}
+            </button>
+            <button
+              onClick={() => setShowModal(false)}
+              style={{
+                background: "#6b7280", color: "white", border: "none",
+                padding: "10px 16px", borderRadius: 4, cursor: "pointer",
+                fontSize: 14
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <button
-      onClick={handleBuy}
-      disabled={buying}
+      onClick={() => setShowModal(true)}
       style={{
-        background: buying ? "#9ca3af" : "#16a34a",
-        color: "white",
-        border: "none",
-        padding: "6px 12px",
-        borderRadius: 4,
-        cursor: buying ? "not-allowed" : "pointer",
-        fontSize: 12
+        background: "#16a34a", color: "white", border: "none",
+        padding: "6px 12px", borderRadius: 4, cursor: "pointer",
+        fontSize: 12, fontWeight: "bold"
       }}
     >
-      {buying ? "..." : "BUY"}
+      BUY
     </button>
   );
 }
@@ -265,6 +342,8 @@ function App() {
                       <BuyButton
                         symbol={stock.symbol}
                         price={stock.price || stock.last_price || 0}
+                        stopLoss={stock.stop_loss}
+                        priceTarget={stock.price_target}
                       />
                     </td>
                   </tr>
