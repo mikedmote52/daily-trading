@@ -35,10 +35,10 @@ logger = logging.getLogger('UniversalDiscovery')
 @dataclass
 class GateConfig:
     """Configuration for gate processing"""
-    # Gate A thresholds - MINIMAL FOR DEMO
+    # Gate A thresholds - ULTRA PERMISSIVE FOR DIAGNOSIS
     # GATEA_MIN_PCT = 1.0   # REMOVED - we don't filter by percent change
-    GATEA_MIN_VOL = 100      # Extremely low volume to let most stocks through
-    GATEA_MIN_RVOL = 0.1     # Almost no RVOL requirement
+    GATEA_MIN_VOL = 1        # Let ANY volume through
+    GATEA_MIN_RVOL = 0.001   # Let ANY RVOL through
     
     # Top-K selections
     K_GATEB = 500            # Top-K after Gate A (optimized for production)
@@ -815,6 +815,14 @@ class UniversalDiscoverySystem:
             if len(universe_df) > 0:
                 logger.info(f"Sample columns: {list(universe_df.columns)}")
                 logger.info(f"Sample data: {universe_df.head(1).to_dict('records')}")
+
+                # Check data types and ranges
+                logger.info(f"Data type analysis:")
+                logger.info(f"  Price range: ${universe_df['price'].min():.2f} - ${universe_df['price'].max():.2f}")
+                logger.info(f"  Volume range: {universe_df['day_volume'].min():,} - {universe_df['day_volume'].max():,}")
+                logger.info(f"  RVOL range: {universe_df['rvol_sust'].min():.2f} - {universe_df['rvol_sust'].max():.2f}")
+                logger.info(f"  Security types: {universe_df['security_type'].value_counts().to_dict()}")
+                logger.info(f"  ADR status: {universe_df['is_adr'].value_counts().to_dict()}")
 
             if universe_df.empty:
                 logger.warning("No universe data loaded from Polygon - API key invalid or MCP unavailable")
