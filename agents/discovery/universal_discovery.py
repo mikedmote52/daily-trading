@@ -104,8 +104,9 @@ class UniversalDiscoverySystem:
         # Calculate RVOL with realistic baseline
         rvol = max(1.0, current_volume / estimated_avg_volume)
 
-        # Cap extreme outliers to prevent unrealistic surges
-        return min(rvol, 30.0)  # Maximum 30x surge is already very extreme and rare
+        # Allow true explosive surges - no artificial cap
+        # Real explosive moves can be 50x, 100x, 500x+ volume
+        return rvol
 
     def _test_date_availability(self, date_str: str) -> bool:
         """Test if a date has trading data available"""
@@ -714,15 +715,15 @@ class UniversalDiscoverySystem:
         # STEP 1: RAPID TRIAGE - Eliminate 60-80% in 2-3 minutes
         logger.info("🔍 RAPID TRIAGE: Applying tradability filters...")
 
-        # 1.1 Liquidity Filter: >= $500K turnover capability (more realistic)
-        min_turnover = 500_000  # $500K minimum for better variety
+        # 1.1 Liquidity Filter: >= $1M turnover capability (explosive opportunities need liquidity)
+        min_turnover = 1_000_000  # $1M minimum for scalable explosive moves
         df_trade['estimated_turnover'] = df_trade['price'] * df_trade['day_volume']
         liquidity_mask = df_trade['estimated_turnover'] >= min_turnover
         logger.info(f"   💧 Liquidity filter: {liquidity_mask.sum()}/{len(df_trade)} passed (${min_turnover:,}/min threshold)")
 
-        # 1.2 RVOL Durability: >= 1.5x sustained (realistic threshold)
-        rvol_sustained_mask = df_trade['rvol_sust'] >= 1.5
-        logger.info(f"   🔄 RVOL durability: {rvol_sustained_mask.sum()}/{len(df_trade)} passed (1.5x+ sustained)")
+        # 1.2 RVOL Durability: >= 3x sustained (explosive accumulation signal)
+        rvol_sustained_mask = df_trade['rvol_sust'] >= 3.0
+        logger.info(f"   🔄 RVOL durability: {rvol_sustained_mask.sum()}/{len(df_trade)} passed (3x+ sustained)")
 
         # 1.3 VWAP Control: Price above or reclaiming VWAP
         vwap_control_mask = df_trade['last'] > df_trade['vwap']
