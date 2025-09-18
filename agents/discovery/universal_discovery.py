@@ -104,8 +104,8 @@ class UniversalDiscoverySystem:
         # Calculate RVOL with realistic baseline
         rvol = max(1.0, current_volume / estimated_avg_volume)
 
-        # Cap extreme outliers to prevent fake surges
-        return min(rvol, 50.0)  # Maximum 50x surge is already very extreme
+        # Cap extreme outliers to prevent unrealistic surges
+        return min(rvol, 30.0)  # Maximum 30x surge is already very extreme and rare
 
     def _test_date_availability(self, date_str: str) -> bool:
         """Test if a date has trading data available"""
@@ -602,18 +602,17 @@ class UniversalDiscoverySystem:
         # Bucket 1: Volume Pattern (40%) - Proper scaling for massive surges
         rvol = df['rvol_sust'].fillna(1.0)
 
-        # Progressive scoring for volume surges (wider differentiation)
-        volume_score = np.where(rvol >= 2000, 100,   # 2000x+ = Perfect (100)
-                       np.where(rvol >= 1000, 98,    # 1000x+ = Exceptional (98)
-                       np.where(rvol >= 500, 95,     # 500x+ = Excellent (95)
-                       np.where(rvol >= 200, 90,     # 200x+ = Very High (90)
-                       np.where(rvol >= 100, 85,     # 100x+ = High (85)
-                       np.where(rvol >= 50, 80,      # 50x+ = Good (80)
-                       np.where(rvol >= 20, 75,      # 20x+ = Decent (75)
-                       np.where(rvol >= 10, 65,      # 10x+ = Fair (65)
-                       np.where(rvol >= 5, 55,       # 5x+ = Poor (55)
-                       np.where(rvol >= 3, 45,       # 3x+ = Very Poor (45)
-                       20))))))))))                  # <3x = Terrible (20)
+        # Realistic volume scoring for actual RVOL values (1-50x range)
+        volume_score = np.where(rvol >= 30, 100,     # 30x+ = Perfect (100) - Extreme surge
+                       np.where(rvol >= 20, 95,      # 20x+ = Exceptional (95) - Very high
+                       np.where(rvol >= 15, 90,      # 15x+ = Excellent (90) - High surge
+                       np.where(rvol >= 10, 85,      # 10x+ = Very Good (85) - Strong surge
+                       np.where(rvol >= 7, 80,       # 7x+ = Good (80) - Notable surge
+                       np.where(rvol >= 5, 75,       # 5x+ = Above Average (75) - Moderate surge
+                       np.where(rvol >= 3, 65,       # 3x+ = Average (65) - Mild surge
+                       np.where(rvol >= 2, 55,       # 2x+ = Below Average (55) - Slight increase
+                       np.where(rvol >= 1.5, 45,     # 1.5x+ = Poor (45) - Minimal increase
+                       30)))))))))                   # <1.5x = Very Poor (30) - Below normal
 
         volume_consistency = np.clip(df['day_volume'] / 1000000 * 10, 0, 100)
         bucket_volume = (volume_score * 0.8 + volume_consistency * 0.2)  # Emphasize surge magnitude
@@ -988,9 +987,26 @@ class UniversalDiscoverySystem:
                 percent_change = result_item['percent_change']
                 score = result_item['accumulation_score']
 
-                # Calculate price target based on historical +63.8% target
-                price_target = round(current_price * 1.638, 2)  # 63.8% gain target
-                stop_loss = round(current_price * 0.90, 2)      # 10% stop loss
+                # Dynamic price targets based on score and volume surge characteristics
+                if score >= 90:
+                    # Exceptional setups: Higher targets for best opportunities
+                    target_multiplier = 1.80 + (volume_surge / 50.0) * 0.20  # 1.80-2.00x (80-100% gains)
+                    stop_multiplier = 0.88  # Tighter 12% stop for high-confidence plays
+                elif score >= 80:
+                    # Strong setups: Good risk/reward
+                    target_multiplier = 1.60 + (volume_surge / 50.0) * 0.15  # 1.60-1.75x (60-75% gains)
+                    stop_multiplier = 0.90  # Standard 10% stop
+                elif score >= 70:
+                    # Decent setups: Conservative targets
+                    target_multiplier = 1.40 + (volume_surge / 50.0) * 0.10  # 1.40-1.50x (40-50% gains)
+                    stop_multiplier = 0.92  # Looser 8% stop for lower confidence
+                else:
+                    # Lower scores: Very conservative
+                    target_multiplier = 1.25 + (volume_surge / 50.0) * 0.05  # 1.25-1.30x (25-30% gains)
+                    stop_multiplier = 0.94  # Very loose 6% stop
+
+                price_target = round(current_price * target_multiplier, 2)
+                stop_loss = round(current_price * stop_multiplier, 2)
 
                 # Generate thesis based on key metrics
                 thesis_components = []
@@ -1018,9 +1034,13 @@ class UniversalDiscoverySystem:
                 elif score >= 75:
                     thesis_components.append("strong technical setup")
 
+                # Calculate dynamic percentages for thesis
+                target_percent = ((price_target - current_price) / current_price) * 100
+                stop_percent = ((current_price - stop_loss) / current_price) * 100
+
                 thesis = f"{result_item['symbol']} shows {' with '.join(thesis_components)}. " \
-                        f"Technical indicators suggest potential explosive move from ${current_price} to target ${price_target} (+63.8%). " \
-                        f"Risk managed with stop at ${stop_loss} (-10%)."
+                        f"Technical indicators suggest potential explosive move from ${current_price} to target ${price_target} (+{target_percent:.1f}%). " \
+                        f"Risk managed with stop at ${stop_loss} (-{stop_percent:.1f}%)."
 
                 result_item['thesis'] = thesis
                 result_item['price_target'] = price_target
