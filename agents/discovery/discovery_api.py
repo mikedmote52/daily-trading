@@ -114,6 +114,40 @@ manager = ConnectionManager()
 
 # API Endpoints
 
+@app.get("/debug/environment")
+def debug_environment():
+    """Debug Render environment vs local differences"""
+    import os
+
+    env_info = {
+        "platform": os.name,
+        "python_path": os.environ.get("PYTHONPATH", "Not set"),
+        "polygon_key_present": bool(os.environ.get("POLYGON_API_KEY")),
+        "polygon_key_length": len(os.environ.get("POLYGON_API_KEY", "")),
+        "redis_url_present": bool(os.environ.get("REDIS_URL")),
+        "environment_vars": list(os.environ.keys()),
+        "working_directory": os.getcwd(),
+        "discovery_system_initialized": discovery_system is not None
+    }
+
+    if discovery_system:
+        try:
+            # Test actual data loading
+            df = discovery_system.bulk_ingest_universe()
+            env_info.update({
+                "universe_load_success": True,
+                "universe_size": len(df),
+                "universe_columns": list(df.columns) if len(df) > 0 else [],
+                "sample_data": df.head(1).to_dict('records') if len(df) > 0 else []
+            })
+        except Exception as e:
+            env_info.update({
+                "universe_load_success": False,
+                "universe_error": str(e)
+            })
+
+    return env_info
+
 @app.get("/debug/latest-scan")
 def debug_latest_scan():
     """Get detailed debug info from the latest discovery scan"""

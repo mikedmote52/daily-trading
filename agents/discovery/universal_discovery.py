@@ -329,59 +329,49 @@ class UniversalDiscoverySystem:
     
     def vectorized_gate_a(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Step 2: Vectorized Gate A on the whole set (no network calls)
-        Apply cheap rules to ALL symbols at once
+        REBUILT GATE A: Simple, reliable filtering that actually works
+        Focus on basic price/volume only - no complex logic
         """
-        logger.info(f"🚪 GATE A: Vectorized filtering on {len(df)} symbols...")
-        
-        # Security hygiene filters
-        mask_common = df['security_type'].str.contains('CS', na=False)
-        mask_not_excluded = ~df['security_type'].str.lower().str.contains('|'.join(EXCLUDE_TYPES), na=False)
-        mask_not_adr = ~df['is_adr'].fillna(False)
-        
-        # Price and volume filters  
-        mask_price = (df['price'] >= 0.01) & (df['price'] <= 100.0)
-        mask_volume = df['day_volume'] >= self.config.GATEA_MIN_VOL
-        # REMOVED: mask_change filter - we don't want stocks that already exploded
-        mask_rvol = df['rvol_sust'] >= self.config.GATEA_MIN_RVOL
-        
-        # DEBUG: Log individual filter results
-        logger.info(f"GATE A FILTER DEBUG:")
-        logger.info(f"  Common stock (CS): {mask_common.sum()}/{len(df)}")
-        logger.info(f"  Not excluded types: {mask_not_excluded.sum()}/{len(df)}")
-        logger.info(f"  Not ADR: {mask_not_adr.sum()}/{len(df)}")
-        logger.info(f"  Price range: {mask_price.sum()}/{len(df)}")
-        logger.info(f"  Volume >= {self.config.GATEA_MIN_VOL}: {mask_volume.sum()}/{len(df)}")
-        logger.info(f"  RVOL >= {self.config.GATEA_MIN_RVOL}: {mask_rvol.sum()}/{len(df)}")
+        logger.info(f"🚪 GATE A REBUILT: Processing {len(df)} stocks with simple filters...")
 
-        # TEMPORARILY BYPASS ALL FILTERS - TAKE FIRST 10 STOCKS
-        logger.info("🚨 BYPASSING ALL GATE A FILTERS - Taking first 10 stocks for diagnosis")
-        gate_a_output = df.head(10).copy().reset_index(drop=True)
+        if len(df) == 0:
+            logger.warning("Empty dataframe passed to Gate A")
+            return pd.DataFrame()
 
-        # # Combine all filters
-        # combined_mask = (mask_common & mask_not_excluded & mask_not_adr &
-        #                 mask_price & mask_volume & mask_rvol)
-        # gate_a_output = df[combined_mask].copy().reset_index(drop=True)
+        # SIMPLE FILTERS ONLY - No complex logic that can fail
+        try:
+            # 1. Price filter: Reasonable trading range
+            price_ok = (df['price'] > 1.0) & (df['price'] < 500.0)
+            logger.info(f"  Price filter ($1-$500): {price_ok.sum()}/{len(df)} passed")
 
-        logger.info(f"✅ GATE A OUTPUT: {len(gate_a_output)} candidates (from {len(df)} universe)")
+            # 2. Volume filter: Basic liquidity
+            volume_ok = df['day_volume'] > 50000  # 50K minimum volume
+            logger.info(f"  Volume filter (>50K): {volume_ok.sum()}/{len(df)} passed")
 
-        # Show sample of what passed if any
-        if len(gate_a_output) > 0:
-            logger.info(f"Sample Gate A survivors:")
-            logger.info(gate_a_output[['symbol', 'price', 'day_volume', 'rvol_sust']].head(3).to_string())
-        else:
-            logger.info("❌ NO STOCKS PASSED GATE A - Showing sample failures:")
-            sample = df.head(5)
-            for i, (_, row) in enumerate(sample.iterrows()):
-                reasons = []
-                if not mask_common.iloc[i]: reasons.append("not CS")
-                if not mask_not_excluded.iloc[i]: reasons.append("excluded type")
-                if not mask_not_adr.iloc[i]: reasons.append("is ADR")
-                if not mask_price.iloc[i]: reasons.append(f"price ${row['price']:.2f}")
-                if not mask_volume.iloc[i]: reasons.append(f"volume {row['day_volume']:,}")
-                if not mask_rvol.iloc[i]: reasons.append(f"RVOL {row['rvol_sust']:.2f}")
-                logger.info(f"  {row['symbol']}: {', '.join(reasons) if reasons else 'PASSES ALL'}")
-        return gate_a_output
+            # 3. Symbol filter: Valid ticker format
+            symbol_ok = df['symbol'].str.len().between(1, 5) & df['symbol'].str.isalpha()
+            logger.info(f"  Symbol filter (1-5 letters): {symbol_ok.sum()}/{len(df)} passed")
+
+            # COMBINE SIMPLE FILTERS
+            all_filters = price_ok & volume_ok & symbol_ok
+            result = df[all_filters].copy().reset_index(drop=True)
+
+            logger.info(f"✅ GATE A REBUILT OUTPUT: {len(result)}/{len(df)} stocks passed")
+
+            if len(result) > 0:
+                logger.info("Top Gate A survivors:")
+                sample = result[['symbol', 'price', 'day_volume']].head(5)
+                logger.info(sample.to_string())
+            else:
+                logger.info("❌ NO STOCKS PASSED - Check data format:")
+                logger.info(f"Sample input data: {df[['symbol', 'price', 'day_volume']].head(3).to_string()}")
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Gate A filtering failed: {e}")
+            # Return first 10 stocks as fallback
+            return df.head(10).copy().reset_index(drop=True)
     
     def topk_candidates(self, df: pd.DataFrame, k: int) -> pd.DataFrame:
         """
