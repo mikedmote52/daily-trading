@@ -714,15 +714,15 @@ class UniversalDiscoverySystem:
         # STEP 1: RAPID TRIAGE - Eliminate 60-80% in 2-3 minutes
         logger.info("🔍 RAPID TRIAGE: Applying tradability filters...")
 
-        # 1.1 Liquidity Filter: >= $1M/min turnover capability
-        min_turnover = 1_000_000  # $1M/min minimum
+        # 1.1 Liquidity Filter: >= $500K turnover capability (more realistic)
+        min_turnover = 500_000  # $500K minimum for better variety
         df_trade['estimated_turnover'] = df_trade['price'] * df_trade['day_volume']
         liquidity_mask = df_trade['estimated_turnover'] >= min_turnover
         logger.info(f"   💧 Liquidity filter: {liquidity_mask.sum()}/{len(df_trade)} passed (${min_turnover:,}/min threshold)")
 
-        # 1.2 RVOL Durability: >= 3x sustained for 30+ minutes
-        rvol_sustained_mask = df_trade['rvol_sust'] >= 3.0
-        logger.info(f"   🔄 RVOL durability: {rvol_sustained_mask.sum()}/{len(df_trade)} passed (3x+ sustained)")
+        # 1.2 RVOL Durability: >= 1.5x sustained (realistic threshold)
+        rvol_sustained_mask = df_trade['rvol_sust'] >= 1.5
+        logger.info(f"   🔄 RVOL durability: {rvol_sustained_mask.sum()}/{len(df_trade)} passed (1.5x+ sustained)")
 
         # 1.3 VWAP Control: Price above or reclaiming VWAP
         vwap_control_mask = df_trade['last'] > df_trade['vwap']
