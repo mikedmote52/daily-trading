@@ -68,9 +68,9 @@ def start_api_server():
     try:
         port = int(os.getenv("PORT", 8002))
         host = os.getenv("HOST", "0.0.0.0")
-        
+
         logger.info(f"Starting Portfolio API server on {host}:{port}")
-        
+
         uvicorn.run(
             "api_server:app",
             host=host,
@@ -79,7 +79,7 @@ def start_api_server():
             log_level="info",
             access_log=True
         )
-        
+
     except Exception as e:
         logger.error(f"Error starting API server: {e}")
         raise
@@ -157,5 +157,12 @@ if __name__ == "__main__":
         start_api_server()
     else:
         # Start full service
-        exit_code = asyncio.run(main())
-        sys.exit(exit_code)
+        try:
+            exit_code = asyncio.run(main())
+            sys.exit(exit_code)
+        except RuntimeError as e:
+            if "cannot be called from a running event loop" in str(e):
+                # Fallback for environments with existing event loops
+                start_api_server()
+            else:
+                raise
