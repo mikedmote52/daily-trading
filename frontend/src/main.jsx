@@ -7,12 +7,19 @@ const ordersBase    = import.meta.env.VITE_ORDERS_API_URL;
 const portfolioBase = import.meta.env.VITE_PORTFOLIO_API_URL;
 
 function useHealth(url) {
-  const [state, setState] = useState({ status: "checking", code: null });
+  const [state, setState] = useState({ status: "checking", code: null, details: null });
   useEffect(() => {
-    if (!url) { setState({ status: "missing", code: null }); return; }
+    if (!url) { setState({ status: "missing", code: null, details: null }); return; }
     fetch(`${url.replace(/\/$/, "")}/health`)
-      .then(r => setState({ status: r.ok ? "ok" : "error", code: r.status }))
-      .catch(() => setState({ status: "error", code: null }));
+      .then(async r => {
+        const details = r.ok ? await r.json().catch(() => null) : null;
+        setState({
+          status: r.ok ? "ok" : "error",
+          code: r.status,
+          details: details
+        });
+      })
+      .catch(() => setState({ status: "error", code: null, details: null }));
   }, [url]);
   return state;
 }
@@ -71,13 +78,33 @@ function BuyButton({ symbol, price, stopLoss, priceTarget }) {
 
   const handleBuy = async () => {
     if (!ordersBase) {
-      alert("Orders API not configured");
+      alert("❌ Orders API not configured\n\nPlease contact support to enable trading functionality.");
+      return;
+    }
+
+    // Validation checks
+    if (shares <= 0) {
+      alert("❌ Invalid position size\n\nPlease enter a valid dollar amount.");
+      return;
+    }
+
+    if (price <= 0) {
+      alert("❌ Invalid price data\n\nUnable to get current price for this stock.");
       return;
     }
 
     setBuying(true);
     try {
-      const idempotencyKey = `order-${symbol}-${Date.now()}`;
+      const idempotencyKey = `order-${symbol}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+      const orderPayload = {
+        ticker: symbol,
+        notional_usd: actualInvestment,
+        last_price: price,
+        side: 'buy'
+      };
+
+      console.log('Submitting order:', orderPayload);
 
       const response = await fetch(`${ordersBase.replace(/\/$/, "")}/orders`, {
         method: 'POST',
@@ -85,24 +112,71 @@ function BuyButton({ symbol, price, stopLoss, priceTarget }) {
           'Content-Type': 'application/json',
           'Idempotency-Key': idempotencyKey
         },
-        body: JSON.stringify({
-          ticker: symbol,
-          notional_usd: actualInvestment,
-          last_price: price,
-          side: 'buy'
-        })
+        body: JSON.stringify(orderPayload)
       });
 
+      const responseText = await response.text();
+      console.log('Order response:', response.status, responseText);
+
       if (response.ok) {
-        const result = await response.json();
-        alert(`✅ Buy order submitted for ${shares} shares of ${symbol}\n💰 Total: $${actualInvestment.toFixed(2)}\n🛑 Stop Loss: $${stopLossPrice.toFixed(2)}\n🎯 Profit Target: $${profitTarget.toFixed(2)}`);
+        let result;
+        try {
+          result = JSON.parse(responseText);
+        } catch {
+          result = { message: responseText };
+        }
+
+        alert(`✅ Buy Order Submitted Successfully!\n\n` +
+              `📊 Stock: ${symbol}\n` +
+              `📈 Shares: ${shares}\n` +
+              `💰 Total Investment: $${actualInvestment.toFixed(2)}\n` +
+              `🛑 Stop Loss: $${stopLossPrice.toFixed(2)} (-${((1 - stopLossPrice/price) * 100).toFixed(1)}%)\n` +
+              `🎯 Profit Target: $${profitTarget.toFixed(2)} (+${((profitTarget/price - 1) * 100).toFixed(1)}%)\n` +
+              `📊 Risk/Reward: 1:${riskReward.toFixed(1)}\n\n` +
+              `✨ Order will execute at market open if after hours.`);
         setShowModal(false);
       } else {
-        const error = await response.text();
-        alert(`❌ Failed to submit order: ${error}`);
+        let errorMessage;
+        try {
+          const errorData = JSON.parse(responseText);
+          errorMessage = errorData.detail || errorData.message || responseText;
+        } catch {
+          errorMessage = responseText;
+        }
+
+        // Enhanced error handling
+        if (response.status === 401 || errorMessage.includes('unauthorized')) {
+          alert(`🔐 Authentication Error\n\n` +
+                `The trading system is not properly authenticated with Alpaca.\n\n` +
+                `📧 Please contact support to configure your trading account.\n\n` +
+                `💡 This is likely due to missing or invalid API credentials.`);
+        } else if (response.status === 400) {
+          alert(`⚠️ Invalid Order Request\n\n` +
+                `There was an issue with your order parameters:\n\n` +
+                `${errorMessage}\n\n` +
+                `💡 Try adjusting your position size or check if the market is open.`);
+        } else if (response.status === 403) {
+          alert(`🚫 Trading Restricted\n\n` +
+                `Your account may have trading restrictions.\n\n` +
+                `📧 Please contact support for assistance.`);
+        } else if (response.status >= 500) {
+          alert(`⚡ Server Error\n\n` +
+                `The trading system is temporarily unavailable.\n\n` +
+                `🔄 Please try again in a few moments.\n\n` +
+                `Error: ${errorMessage}`);
+        } else {
+          alert(`❌ Order Failed\n\n` +
+                `Status: ${response.status}\n` +
+                `Error: ${errorMessage}\n\n` +
+                `💡 Please try again or contact support if the issue persists.`);
+        }
       }
     } catch (err) {
-      alert(`❌ Error: ${err.message}`);
+      console.error('Order submission error:', err);
+      alert(`🌐 Network Error\n\n` +
+            `Unable to connect to the trading system.\n\n` +
+            `🔄 Please check your internet connection and try again.\n\n` +
+            `Error: ${err.message}`);
     } finally {
       setBuying(false);
     }
@@ -147,18 +221,31 @@ function BuyButton({ symbol, price, stopLoss, priceTarget }) {
             <div><strong>Risk:Reward:</strong> 1:{riskReward.toFixed(1)}</div>
           </div>
 
+          <div style={{
+            background: "#fffbeb", border: "1px solid #fed7aa", padding: 8, borderRadius: 4,
+            marginBottom: 16, fontSize: 12, color: "#92400e"
+          }}>
+            📈 <strong>Paper Trading:</strong> This is a simulated trade using virtual money.
+            Perfect for testing strategies without real financial risk!
+          </div>
+
           <div style={{ display: "flex", gap: 8 }}>
             <button
               onClick={handleBuy}
-              disabled={buying || shares === 0}
+              disabled={buying || shares === 0 || price <= 0}
               style={{
-                flex: 1, background: buying ? "#9ca3af" : "#16a34a",
+                flex: 1,
+                background: buying ? "#9ca3af" : (shares === 0 || price <= 0) ? "#dc2626" : "#16a34a",
                 color: "white", border: "none", padding: "10px 16px",
-                borderRadius: 4, cursor: buying ? "not-allowed" : "pointer",
+                borderRadius: 4,
+                cursor: (buying || shares === 0 || price <= 0) ? "not-allowed" : "pointer",
                 fontSize: 14, fontWeight: "bold"
               }}
             >
-              {buying ? "Placing Order..." : `Buy ${shares} Shares`}
+              {buying ? "Placing Order..." :
+               shares === 0 ? "Invalid Amount" :
+               price <= 0 ? "Invalid Price" :
+               `Buy ${shares} Shares`}
             </button>
             <button
               onClick={() => setShowModal(false)}
@@ -238,6 +325,69 @@ function RunDiscoveryButton() {
       }}
     >
       {running ? "Running Discovery..." : "🔍 Run Discovery Scan"}
+    </button>
+  );
+}
+
+function TestTradingButton() {
+  const [testing, setTesting] = useState(false);
+
+  const handleTestTrading = async () => {
+    if (!ordersBase) {
+      alert("❌ Orders API not configured");
+      return;
+    }
+
+    setTesting(true);
+    try {
+      // Test account endpoint
+      const response = await fetch(`${ordersBase.replace(/\/$/, "")}/account`);
+      const responseText = await response.text();
+
+      if (response.ok) {
+        const accountData = JSON.parse(responseText);
+        alert(`✅ Trading Connection Successful!\n\n` +
+              `💰 Buying Power: $${parseFloat(accountData.buying_power || 0).toLocaleString()}\n` +
+              `💵 Cash: $${parseFloat(accountData.cash || 0).toLocaleString()}\n` +
+              `📊 Portfolio Value: $${parseFloat(accountData.portfolio_value || 0).toLocaleString()}\n\n` +
+              `✨ Your paper trading account is ready!`);
+      } else if (response.status === 401) {
+        alert(`🔐 Authentication Failed\n\n` +
+              `The Alpaca API credentials are not properly configured.\n\n` +
+              `📧 Please contact support to set up your trading account.`);
+      } else {
+        alert(`❌ Trading Connection Failed\n\n` +
+              `Status: ${response.status}\n` +
+              `Response: ${responseText}\n\n` +
+              `📧 Please contact support for assistance.`);
+      }
+    } catch (err) {
+      alert(`🌐 Network Error\n\n` +
+            `Unable to connect to trading system.\n\n` +
+            `Error: ${err.message}`);
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleTestTrading}
+      disabled={testing}
+      style={{
+        background: testing ? "#9ca3af" : "#059669",
+        color: "white",
+        border: "none",
+        padding: "8px 16px",
+        borderRadius: 4,
+        cursor: testing ? "not-allowed" : "pointer",
+        fontSize: 14,
+        fontWeight: "bold",
+        marginBottom: 16,
+        marginLeft: 8
+      }}
+    >
+      {testing ? "Testing..." : "📈 Test Trading"}
     </button>
   );
 }
@@ -332,6 +482,16 @@ function App() {
           <div style={{ color: "#666", fontSize: 13 }}>
             URL: {ordersBase || <em style={{ color: "#dc2626" }}>VITE_ORDERS_API_URL not set</em>}
           </div>
+          {o.details && (
+            <div style={{ fontSize: 11, color: o.details.alpaca_configured ? "#10b981" : "#dc2626", marginTop: 4 }}>
+              Alpaca: {o.details.alpaca_configured ? "✅ Configured" : "❌ Not Configured"}
+              {!o.details.alpaca_configured && (
+                <div style={{ color: "#dc2626", fontWeight: "bold" }}>
+                  ⚠️ Trading disabled - API keys missing
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div>
@@ -348,7 +508,10 @@ function App() {
       <div>
         <h2 style={{ fontSize: 24, margin: "0 0 16px 0" }}>Discovered Stocks</h2>
 
-        <RunDiscoveryButton />
+        <div style={{ display: "flex", alignItems: "center" }}>
+          <RunDiscoveryButton />
+          <TestTradingButton />
+        </div>
 
         {stocks.loading && <p>Loading stocks...</p>}
         {stocks.error && <p style={{ color: "#dc2626" }}>Error: {stocks.error}</p>}
