@@ -564,7 +564,7 @@ function App() {
                     </td>
                     <td style={{ padding: "8px 12px", border: "1px solid #e2e8f0", textAlign: "right" }}>
                       <div>
-                        <div>{(stock.score || stock.accumulation_score || stock.total_score || 0).toFixed(0)}</div>
+                        <div>{(stock.composite_score || stock.score || stock.accumulation_score || stock.total_score || 0).toFixed(1)}</div>
                         {stock.risk_reward_ratio && (
                           <div style={{ fontSize: 11, color: "#3b82f6" }}>
                             R:R {stock.risk_reward_ratio}:1
