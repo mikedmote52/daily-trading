@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import PortfolioApp from "./portfolio.jsx";
 
 const discoveryBase = import.meta.env.VITE_DISCOVERY_API_URL;
 const ordersBase    = import.meta.env.VITE_ORDERS_API_URL;
+const portfolioBase = import.meta.env.VITE_PORTFOLIO_API_URL;
 
 function useHealth(url) {
   const [state, setState] = useState({ status: "checking", code: null });
@@ -241,14 +243,79 @@ function RunDiscoveryButton() {
 }
 
 function App() {
+  const [currentView, setCurrentView] = useState("discovery");
   const d = useHealth(discoveryBase);
   const o = useHealth(ordersBase);
+  const p = useHealth(portfolioBase);
   const stocks = useStocks();
+
+  const navButtonStyle = (isActive) => ({
+    padding: "12px 20px",
+    margin: "0 8px 0 0",
+    border: "none",
+    borderRadius: 6,
+    cursor: "pointer",
+    fontSize: 14,
+    fontWeight: "600",
+    background: isActive ? "#2563eb" : "#f3f4f6",
+    color: isActive ? "white" : "#374151",
+    transition: "all 0.2s ease"
+  });
+
+  if (currentView === "portfolio") {
+    return (
+      <div style={{ fontFamily: "ui-sans-serif, system-ui" }}>
+        {/* Navigation Header */}
+        <div style={{ background: "white", borderBottom: "1px solid #e5e7eb", padding: "16px 24px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <h1 style={{ fontSize: 32, margin: 0 }}>AlphaStack</h1>
+              <p style={{ color: "#6b7280", margin: "4px 0 0 0" }}>AI-Powered Explosive Stock Returns</p>
+            </div>
+            <nav style={{ display: "flex" }}>
+              <button
+                style={navButtonStyle(currentView === "discovery")}
+                onClick={() => setCurrentView("discovery")}
+              >
+                🔍 Discovery
+              </button>
+              <button
+                style={navButtonStyle(currentView === "portfolio")}
+                onClick={() => setCurrentView("portfolio")}
+              >
+                📊 Portfolio
+              </button>
+            </nav>
+          </div>
+        </div>
+        <PortfolioApp />
+      </div>
+    );
+  }
 
   return (
     <div style={{ fontFamily: "ui-sans-serif, system-ui", padding: 24, lineHeight: 1.4 }}>
-      <h1 style={{ fontSize: 40, margin: 0 }}>AlphaStack UI</h1>
-      <p style={{ color: "#555" }}>Stock discovery and trading interface</p>
+      {/* Navigation Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
+        <div>
+          <h1 style={{ fontSize: 40, margin: 0 }}>AlphaStack UI</h1>
+          <p style={{ color: "#555" }}>Stock discovery and trading interface</p>
+        </div>
+        <nav style={{ display: "flex" }}>
+          <button
+            style={navButtonStyle(currentView === "discovery")}
+            onClick={() => setCurrentView("discovery")}
+          >
+            🔍 Discovery
+          </button>
+          <button
+            style={navButtonStyle(currentView === "portfolio")}
+            onClick={() => setCurrentView("portfolio")}
+          >
+            📊 Portfolio
+          </button>
+        </nav>
+      </div>
 
       <div style={{ display: "grid", gap: 12, maxWidth: 720, marginBottom: 24 }}>
         <div>
@@ -264,6 +331,14 @@ function App() {
           <Pill ok={o.status === "ok"} label="Orders" code={o.code} />
           <div style={{ color: "#666", fontSize: 13 }}>
             URL: {ordersBase || <em style={{ color: "#dc2626" }}>VITE_ORDERS_API_URL not set</em>}
+          </div>
+        </div>
+
+        <div>
+          <strong>Portfolio API</strong>
+          <Pill ok={p.status === "ok"} label="Portfolio" code={p.code} />
+          <div style={{ color: "#666", fontSize: 13 }}>
+            URL: {portfolioBase || <em style={{ color: "#dc2626" }}>VITE_PORTFOLIO_API_URL not set</em>}
           </div>
         </div>
       </div>
