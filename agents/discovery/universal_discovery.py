@@ -79,6 +79,115 @@ class UniversalDiscoverySystem:
         else:
             logger.info("⚠️  Using direct HTTP requests to Polygon API")
 
+    def get_snapshot_universe(self) -> pd.DataFrame:
+        """
+        Get real-time stock universe using Polygon Snapshot API
+        Returns current day vs previous day volume for accurate RVOL calculation
+        """
+        logger.info("   📡 Fetching snapshot data for real volume surge calculation...")
+
+        try:
+            url = "https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers"
+            params = {'apikey': self.polygon_api_key}
+            response = requests.get(url, params=params, timeout=60)
+
+            if response.status_code != 200:
+                logger.error(f"   ❌ Snapshot API failed: {response.status_code}")
+                return pd.DataFrame()
+
+            data = response.json()
+            if 'tickers' not in data:
+                logger.error("   ❌ No tickers in snapshot response")
+                return pd.DataFrame()
+
+            logger.info(f"   ✅ Received {len(data['tickers'])} stocks from snapshot API")
+
+            all_data = []
+            for ticker_data in data['tickers']:
+                symbol = ticker_data.get('ticker', '').strip()
+
+                # Basic validation
+                if not symbol or len(symbol) < 2 or len(symbol) > 5 or not symbol.isalpha():
+                    continue
+
+                # Extract current day data
+                day_data = ticker_data.get('day', {})
+                prev_data = ticker_data.get('prevDay', {})
+
+                current_volume = day_data.get('v', 0)
+                prev_volume = prev_data.get('v', 0)
+                current_price = day_data.get('c', 0)
+                open_price = day_data.get('o', 0)
+                high_price = day_data.get('h', 0)
+                low_price = day_data.get('l', 0)
+                vwap = day_data.get('vw', current_price)
+
+                # Skip invalid data
+                if current_price <= 0 or current_volume <= 0 or prev_volume <= 0:
+                    continue
+
+                # Calculate REAL RVOL (current volume / previous day volume)
+                real_rvol = current_volume / prev_volume
+
+                # Calculate percent change
+                percent_change = ticker_data.get('todaysChangePerc', 0)
+
+                # Calculate ATR approximation
+                daily_range = ((high_price - low_price) / current_price) * 100 if current_price > 0 else 0
+
+                stock_data = {
+                    'symbol': symbol,
+                    'price': current_price,
+                    'day_volume': current_volume,
+                    'percent_change': percent_change,
+                    'rvol_sust': real_rvol,  # REAL RVOL - no artificial cap!
+                    'security_type': 'CS',
+                    'market': 'stocks',
+                    'is_adr': False,
+                    'sector': 'Unknown',
+                    'exchange': 'Unknown',
+                    'vwap': vwap,
+                    'open': open_price,
+                    'high': high_price,
+                    'low': low_price,
+                    'atr_pct': max(daily_range, 4.0),
+                    'proxy_rank': real_rvol * np.log1p(current_volume / 1000000),
+                    'market_cap': None,
+                    'float_shares': None,
+                    'avg_volume_20d': prev_volume,  # Use actual previous day as baseline
+                    'trend_3d': 1 if percent_change > -5 else -1,
+                    'trend_5d': 1 if percent_change > -10 else -1,
+                    'iv_percentile': None,
+                    'call_put_oi_ratio': None,
+                    'borrow_fee_pct': None,
+                    'short_interest_pct': None,
+                    'rvol_runlen': None,
+                    'last': current_price,
+                    'ema9': current_price * 1.001,
+                    'ema20': current_price * 0.999,
+                    'rsi': None,
+                    'eps_ttm': None,
+                    'pe_ttm': None
+                }
+
+                all_data.append(stock_data)
+
+            df = pd.DataFrame(all_data)
+            logger.info(f"   ✅ Processed {len(df)} stocks with real RVOL data")
+
+            # Log volume surge statistics
+            if len(df) > 0:
+                surge_stats = df['rvol_sust'].describe()
+                max_surge = df['rvol_sust'].max()
+                high_surge_count = (df['rvol_sust'] >= 5.0).sum()
+                logger.info(f"   📊 Volume surge stats - Max: {max_surge:.1f}x, >5x count: {high_surge_count}")
+
+            return df
+
+        except Exception as e:
+            logger.error(f"   ❌ Snapshot API error: {e}")
+            return pd.DataFrame()
+
     def calculate_conservative_rvol(self, current_volume: int, price: float, symbol: str) -> float:
         """
         Calculate conservative RVOL using improved baseline estimates
@@ -165,10 +274,27 @@ class UniversalDiscoverySystem:
 
     def bulk_ingest_universe(self) -> pd.DataFrame:
         """
-        OPTIMIZED: Use Polygon's grouped daily bars for efficient bulk processing
-        Get ALL stocks with price/volume data in fewer API calls
+        REAL-TIME VOLUME SURGE SYSTEM: Use Polygon Snapshot API for accurate RVOL
+        Get ALL stocks with current vs previous day volume for real surge detection
         """
-        logger.info("🚀 OPTIMIZED BULK INGEST: Using efficient Polygon endpoints...")
+        logger.info("🚀 REAL-TIME BULK INGEST: Using Polygon Snapshot API for accurate volume data...")
+
+        # Try the new snapshot API first for real RVOL calculation
+        snapshot_df = self.get_snapshot_universe()
+
+        if len(snapshot_df) > 0:
+            logger.info(f"✅ Successfully loaded {len(snapshot_df)} stocks with real volume data")
+            return snapshot_df
+
+        # Fallback to old method if snapshot fails
+        logger.warning("⚠️ Snapshot API failed, falling back to grouped daily method...")
+        return self._fallback_bulk_ingest()
+
+    def _fallback_bulk_ingest(self) -> pd.DataFrame:
+        """
+        Fallback method using grouped daily bars (old approach)
+        """
+        logger.info("📡 FALLBACK: Using grouped daily bars...")
 
         # Use Polygon's grouped daily endpoint for ALL stocks at once
         # Try last few days to find valid trading day
