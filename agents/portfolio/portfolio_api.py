@@ -91,6 +91,8 @@ async def health():
 
     # Test Alpaca connection
     alpaca_connected = False
+    connection_error = None
+
     if alpaca_configured:
         try:
             async with httpx.AsyncClient() as client:
@@ -100,14 +102,22 @@ async def health():
                     timeout=5.0
                 )
                 alpaca_connected = response.status_code == 200
-        except:
+                if not alpaca_connected:
+                    connection_error = f"HTTP {response.status_code}: {response.text[:100]}"
+        except Exception as e:
             alpaca_connected = False
+            connection_error = str(e)[:100]
 
     return {
         "status": "healthy",
         "service": "portfolio-api",
         "alpaca_configured": alpaca_configured,
         "alpaca_connected": alpaca_connected,
+        "alpaca_base": ALPACA_BASE,
+        "alpaca_key_present": bool(ALPACA_KEY),
+        "alpaca_secret_present": bool(ALPACA_SECRET),
+        "alpaca_key_length": len(ALPACA_KEY) if ALPACA_KEY else 0,
+        "connection_error": connection_error,
         "timestamp": datetime.now().isoformat()
     }
 

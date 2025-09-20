@@ -15,9 +15,17 @@ def main():
     # Check environment
     print("\n🔧 Environment Check:")
     print(f"PORT: {os.environ.get('PORT', 'Not Set')}")
-    print(f"ALPACA_KEY: {'✅ Set' if os.environ.get('ALPACA_KEY') else '❌ Missing'}")
-    print(f"ALPACA_SECRET: {'✅ Set' if os.environ.get('ALPACA_SECRET') else '❌ Missing'}")
+    alpaca_key = os.environ.get('ALPACA_KEY', '')
+    alpaca_secret = os.environ.get('ALPACA_SECRET', '')
+    print(f"ALPACA_KEY: {'✅ Set' if alpaca_key else '❌ Missing'} (length: {len(alpaca_key)})")
+    print(f"ALPACA_SECRET: {'✅ Set' if alpaca_secret else '❌ Missing'} (length: {len(alpaca_secret)})")
     print(f"ALPACA_BASE_URL: {os.environ.get('ALPACA_BASE_URL', 'Not Set')}")
+
+    # Show first/last few characters of keys for debugging (without exposing full keys)
+    if alpaca_key:
+        print(f"ALPACA_KEY preview: {alpaca_key[:4]}...{alpaca_key[-4:] if len(alpaca_key) > 8 else ''}")
+    if alpaca_secret:
+        print(f"ALPACA_SECRET preview: {alpaca_secret[:4]}...{alpaca_secret[-4:] if len(alpaca_secret) > 8 else ''}")
 
     # Import and run the actual portfolio API
     print("\n🚀 Starting Portfolio API...")
