@@ -7,10 +7,13 @@ services:
     buildCommand: |
       cd agents/portfolio &&
       pip install --upgrade pip &&
-      pip install -r requirements.txt
+      pip install -r requirements.txt &&
+      ls -la &&
+      echo "Build complete - only portfolio_api.py should start"
     startCommand: |
       cd agents/portfolio &&
-      python3 portfolio_api.py
+      chmod +x run_api.sh &&
+      ./run_api.sh
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.6
