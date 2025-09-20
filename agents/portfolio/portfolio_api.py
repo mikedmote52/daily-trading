@@ -352,5 +352,7 @@ async def get_ai_recommendations():
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("PORT", 8002))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    port = int(os.environ.get("PORT", 10000))
+    host = "0.0.0.0"
+    print(f"Starting Portfolio API on {host}:{port}")
+    uvicorn.run(app, host=host, port=port)
