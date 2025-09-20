@@ -360,6 +360,41 @@ async def get_ai_recommendations():
         logger.error(f"Error getting recommendations: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# Frontend-expected endpoints with /portfolio prefix
+@app.get("/portfolio/health")
+async def portfolio_health():
+    """Health check endpoint - frontend expects /portfolio/health"""
+    return await health()
+
+@app.get("/portfolio/summary")
+async def portfolio_summary():
+    """Portfolio summary - frontend expects /portfolio/summary"""
+    return await get_portfolio_summary()
+
+@app.get("/portfolio/positions")
+async def portfolio_positions():
+    """Portfolio positions - frontend expects /portfolio/positions"""
+    return await get_positions()
+
+@app.get("/portfolio/recommendations")
+async def portfolio_recommendations():
+    """Portfolio recommendations - frontend expects /portfolio/recommendations"""
+    return await get_ai_recommendations()
+
+@app.get("/portfolio/alerts")
+async def portfolio_alerts():
+    """Portfolio alerts - placeholder endpoint"""
+    return {
+        "alerts": [
+            {
+                "id": 1,
+                "type": "INFO",
+                "message": "Portfolio system is operational",
+                "timestamp": datetime.now().isoformat()
+            }
+        ]
+    }
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 10000))
