@@ -336,3 +336,4 @@ coverage/
 .pytest_cache/
 htmlcov/
 .tox/
+agents/portfolio/.env

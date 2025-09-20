@@ -3,38 +3,30 @@ services:
     name: alphastack-portfolio
     env: python
     region: oregon
-    plan: starter
+    plan: free
     buildCommand: |
       cd agents/portfolio &&
       pip install --upgrade pip &&
       pip install -r requirements.txt
     startCommand: |
       cd agents/portfolio &&
-      python start_portfolio_service.py --api-only
+      python portfolio_api.py
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.6
       - key: PORT
-        value: 8002
+        value: 10000
       - key: HOST
         value: 0.0.0.0
-      - key: DEPLOYMENT_MODE
-        value: production
-      - key: VITE_DISCOVERY_API_URL
-        value: https://alphastack-discovery.onrender.com
-      - key: ALPACA_API_KEY
+      - key: ALPACA_KEY
         sync: false
-      - key: ALPACA_SECRET_KEY
+      - key: ALPACA_SECRET
         sync: false
       - key: ALPACA_BASE_URL
         value: https://paper-api.alpaca.markets
       - key: CLAUDE_API_KEY
         sync: false
-      - key: POLYGON_API_KEY
-        sync: false
+      - key: REDIS_URL
+        value: redis://localhost:6379
     healthCheckPath: /health
     autoDeploy: true
-    disk:
-      name: portfolio-data
-      mountPath: /app/data
-      sizeGB: 1

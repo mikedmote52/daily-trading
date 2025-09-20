@@ -1,15 +1,12 @@
-# Enhanced Portfolio Management Dependencies - Python 3.13 Compatible
+# Portfolio API Service Dependencies - Real Data Only
 fastapi>=0.104.1
 uvicorn[standard]>=0.24.0
 anthropic>=0.25.0
 python-dotenv>=1.0.0
 pandas>=2.1.0
 numpy>=1.25.0
-alpaca-trade-api>=3.1.1
-yfinance>=0.2.18
-requests>=2.31.0
-pydantic>=2.5.0
 httpx>=0.25.2
-pytz>=2023.3
-jsonschema>=4.20.0
-aiofiles>=23.2.1
+pydantic>=2.5.0
+redis>=5.0.1
+yfinance>=0.2.18
+scipy>=1.11.4

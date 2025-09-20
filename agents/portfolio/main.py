@@ -20,6 +20,7 @@ from anthropic import Anthropic
 from dotenv import load_dotenv
 import yfinance as yf
 from scipy.optimize import minimize
+import httpx
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -147,75 +148,108 @@ class PortfolioManagementAgent:
     def __init__(self):
         self.claude = Anthropic(api_key=os.getenv('CLAUDE_API_KEY'))
         self.redis_client = redis.Redis.from_url(os.getenv('REDIS_URL', 'redis://localhost:6379'))
-        
-        # Portfolio state
-        self.cash = 100000.0  # Starting cash
+
+        # Alpaca configuration
+        self.alpaca_base = os.getenv('ALPACA_BASE_URL', 'https://paper-api.alpaca.markets')
+        self.alpaca_key = os.getenv('ALPACA_KEY')
+        self.alpaca_secret = os.getenv('ALPACA_SECRET')
+        self.orders_api_base = os.getenv('ORDERS_API_URL', 'https://alphastack-orders.onrender.com')
+
+        if not self.alpaca_key or not self.alpaca_secret:
+            raise ValueError("ALPACA_KEY and ALPACA_SECRET environment variables are required")
+
+        # Portfolio state (will be loaded from real Alpaca account)
+        self.cash = 0.0
         self.positions: Dict[str, Position] = {}
-        self.portfolio_value = self.cash
+        self.portfolio_value = 0.0
         self.daily_pnl = 0.0
-        
+
         # Risk management
         self.risk_manager = RiskManager()
         self.optimizer = PortfolioOptimizer()
-        
+
         # Configuration
-        self.auto_execution = False  # Safety flag
+        self.auto_execution = True  # Enable real trading
         self.max_positions = 10
         self.rebalance_threshold = 0.05  # 5% deviation triggers rebalance
-        
-        self.running = False
-        
-        # Initialize with sample positions for demo
-        self._initialize_sample_portfolio()
 
-    def _initialize_sample_portfolio(self):
-        """Initialize with sample positions for demonstration"""
-        sample_positions = {
-            'AAPL': {'shares': 100, 'avg_price': 145.50},
-            'GOOGL': {'shares': 50, 'avg_price': 120.00},
-            'MSFT': {'shares': 75, 'avg_price': 180.00}
+        self.running = False
+
+    def _get_alpaca_headers(self):
+        """Get Alpaca authentication headers"""
+        return {
+            "APCA-API-KEY-ID": self.alpaca_key,
+            "APCA-API-SECRET-KEY": self.alpaca_secret,
+            "Content-Type": "application/json"
         }
-        
-        total_investment = 0
-        
-        for symbol, data in sample_positions.items():
-            try:
-                # Get current price
-                ticker = yf.Ticker(symbol)
-                current_price = ticker.history(period="1d")['Close'].iloc[-1]
-                
-                shares = data['shares']
-                avg_price = data['avg_price']
-                market_value = shares * current_price
-                unrealized_pnl = shares * (current_price - avg_price)
-                unrealized_pnl_percent = (current_price - avg_price) / avg_price * 100
-                
-                position = Position(
-                    symbol=symbol,
-                    shares=shares,
-                    avg_price=avg_price,
-                    current_price=current_price,
-                    market_value=market_value,
-                    unrealized_pnl=unrealized_pnl,
-                    unrealized_pnl_percent=unrealized_pnl_percent,
-                    weight=0.0,  # Will be calculated
-                    entry_date=datetime.now() - timedelta(days=30)
+
+    async def _initialize_real_portfolio(self):
+        """Initialize portfolio from real Alpaca account data"""
+        try:
+            async with httpx.AsyncClient() as client:
+                # Get real account data
+                account_response = await client.get(
+                    f"{self.alpaca_base}/v2/account",
+                    headers=self._get_alpaca_headers()
                 )
-                
-                self.positions[symbol] = position
-                total_investment += avg_price * shares
-                
-            except Exception as e:
-                logger.warning(f"Failed to initialize position for {symbol}: {e}")
-        
-        self.cash -= total_investment
-        self._update_portfolio_metrics()
+
+                if account_response.status_code != 200:
+                    raise Exception(f"Failed to fetch account: {account_response.status_code} - {account_response.text}")
+
+                account = account_response.json()
+                self.cash = float(account['cash'])
+                self.portfolio_value = float(account['portfolio_value'])
+
+                logger.info(f"Loaded real account: ${self.portfolio_value:.2f} portfolio value, ${self.cash:.2f} cash")
+
+                # Get real positions
+                positions_response = await client.get(
+                    f"{self.alpaca_base}/v2/positions",
+                    headers=self._get_alpaca_headers()
+                )
+
+                if positions_response.status_code == 200:
+                    positions = positions_response.json()
+
+                    for pos in positions:
+                        if float(pos['qty']) != 0:  # Only include non-zero positions
+                            shares = int(float(pos['qty']))
+                            avg_price = float(pos['avg_entry_price'])
+                            market_value = float(pos['market_value'])
+                            current_price = market_value / abs(shares) if shares != 0 else avg_price
+
+                            position = Position(
+                                symbol=pos['symbol'],
+                                shares=shares,
+                                avg_price=avg_price,
+                                current_price=current_price,
+                                market_value=market_value,
+                                unrealized_pnl=float(pos['unrealized_pl']),
+                                unrealized_pnl_percent=float(pos['unrealized_plpc']) * 100,
+                                weight=market_value / self.portfolio_value if self.portfolio_value > 0 else 0,
+                                entry_date=datetime.now()  # Alpaca doesn't provide entry date in positions
+                            )
+
+                            self.positions[pos['symbol']] = position
+                            logger.info(f"Loaded position: {pos['symbol']} - {shares} shares @ ${avg_price:.2f}")
+
+                    logger.info(f"Loaded {len(self.positions)} real positions")
+                else:
+                    logger.warning(f"Failed to fetch positions: {positions_response.status_code}")
+
+        except Exception as e:
+            logger.error(f"Failed to initialize real portfolio: {e}")
+            raise  # Fail hard - no fallback to fake data
 
     async def start(self):
         """Start the portfolio management agent"""
         logger.info("Starting Portfolio Management Agent...")
+
+        # Initialize with real portfolio data
+        await self._initialize_real_portfolio()
+
         self.running = True
-        
+
         # Start background tasks
         tasks = [
             asyncio.create_task(self._monitoring_loop()),
@@ -223,7 +257,7 @@ class PortfolioManagementAgent:
             asyncio.create_task(self._risk_monitoring_loop()),
             asyncio.create_task(self._heartbeat_loop())
         ]
-        
+
         try:
             await asyncio.gather(*tasks)
         except KeyboardInterrupt:
@@ -424,74 +458,90 @@ class PortfolioManagementAgent:
                 
             logger.info(f"{alloc.action} {alloc.shares_to_trade} shares of {alloc.symbol}")
             
-            # Simulate trade execution
+            # Execute real trades
             if alloc.action == 'BUY':
-                await self._simulate_buy_order(alloc.symbol, alloc.shares_to_trade)
+                await self._execute_real_buy_order(alloc.symbol, alloc.shares_to_trade)
             elif alloc.action == 'SELL':
-                await self._simulate_sell_order(alloc.symbol, alloc.shares_to_trade)
+                await self._execute_real_sell_order(alloc.symbol, alloc.shares_to_trade)
         
         # Send rebalancing update
         await self._send_rebalancing_update(allocations)
 
-    async def _simulate_buy_order(self, symbol: str, shares: int):
-        """Simulate buying shares"""
+    async def _execute_real_buy_order(self, symbol: str, shares: int):
+        """Execute real buy order via orders API"""
+        try:
+            order_payload = {
+                'ticker': symbol,
+                'notional_usd': shares * await self._get_current_price(symbol),
+                'last_price': await self._get_current_price(symbol),
+                'side': 'buy'
+            }
+
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self.orders_api_base}/orders",
+                    json=order_payload,
+                    headers={'Content-Type': 'application/json'}
+                )
+
+                if response.status_code in [200, 201]:
+                    order = response.json()
+                    logger.info(f"Real buy order placed for {symbol}: {order}")
+                    return order
+                else:
+                    raise Exception(f"Order failed: {response.status_code} - {response.text}")
+
+        except Exception as e:
+            logger.error(f"Real buy order failed for {symbol}: {e}")
+            raise
+
+    async def _get_current_price(self, symbol: str) -> float:
+        """Get current price for a symbol"""
         try:
             ticker = yf.Ticker(symbol)
-            current_price = ticker.history(period="1d")['Close'].iloc[-1]
-            cost = shares * current_price * 1.001  # Include commission
-            
-            if cost <= self.cash:
-                self.cash -= cost
-                
-                if symbol in self.positions:
-                    # Add to existing position
-                    pos = self.positions[symbol]
-                    total_shares = pos.shares + shares
-                    total_cost = pos.shares * pos.avg_price + shares * current_price
-                    pos.avg_price = total_cost / total_shares
-                    pos.shares = total_shares
-                else:
-                    # Create new position
-                    self.positions[symbol] = Position(
-                        symbol=symbol,
-                        shares=shares,
-                        avg_price=current_price,
-                        current_price=current_price,
-                        market_value=shares * current_price,
-                        unrealized_pnl=0.0,
-                        unrealized_pnl_percent=0.0,
-                        weight=0.0,
-                        entry_date=datetime.now()
-                    )
-                
-                logger.info(f"Bought {shares} shares of {symbol} at ${current_price:.2f}")
-                
+            hist = ticker.history(period="1d")
+            if not hist.empty:
+                return hist['Close'].iloc[-1]
+            else:
+                raise Exception(f"No price data for {symbol}")
         except Exception as e:
-            logger.error(f"Error simulating buy order for {symbol}: {e}")
+            logger.error(f"Failed to get price for {symbol}: {e}")
+            raise
 
-    async def _simulate_sell_order(self, symbol: str, shares: int):
-        """Simulate selling shares"""
+    async def _execute_real_sell_order(self, symbol: str, shares: int):
+        """Execute real sell order via orders API"""
         try:
             if symbol not in self.positions:
+                logger.warning(f"Cannot sell {symbol} - no position held")
                 return
-                
+
             pos = self.positions[symbol]
             shares_to_sell = min(shares, pos.shares)
-            
-            ticker = yf.Ticker(symbol)
-            current_price = ticker.history(period="1d")['Close'].iloc[-1]
-            proceeds = shares_to_sell * current_price * 0.999  # Include commission
-            
-            self.cash += proceeds
-            pos.shares -= shares_to_sell
-            
-            if pos.shares == 0:
-                del self.positions[symbol]
-            
-            logger.info(f"Sold {shares_to_sell} shares of {symbol} at ${current_price:.2f}")
-            
+
+            order_payload = {
+                'ticker': symbol,
+                'notional_usd': shares_to_sell * await self._get_current_price(symbol),
+                'last_price': await self._get_current_price(symbol),
+                'side': 'sell'
+            }
+
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self.orders_api_base}/orders",
+                    json=order_payload,
+                    headers={'Content-Type': 'application/json'}
+                )
+
+                if response.status_code in [200, 201]:
+                    order = response.json()
+                    logger.info(f"Real sell order placed for {symbol}: {order}")
+                    return order
+                else:
+                    raise Exception(f"Sell order failed: {response.status_code} - {response.text}")
+
         except Exception as e:
-            logger.error(f"Error simulating sell order for {symbol}: {e}")
+            logger.error(f"Real sell order failed for {symbol}: {e}")
+            raise
 
     async def _risk_monitoring_loop(self):
         """Monitor portfolio risk metrics"""
