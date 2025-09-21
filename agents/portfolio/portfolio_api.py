@@ -98,10 +98,9 @@ async def health():
 
     if alpaca_configured:
         try:
-            with httpx.Client() as client:
+            with httpx.Client(base_url=ALPACA_BASE, headers=_auth_headers()) as client:
                 response = client.get(
-                    f"{ALPACA_BASE}/v2/account",
-                    headers=_auth_headers(),
+                    "/v2/account",
                     timeout=5.0
                 )
                 alpaca_connected = response.status_code == 200
@@ -128,11 +127,8 @@ async def health():
 def get_portfolio_summary():
     """Get portfolio summary from Alpaca"""
     try:
-        with httpx.Client() as client:
-            response = client.get(
-                f"{ALPACA_BASE}/v2/account",
-                headers=_auth_headers()
-            )
+        with httpx.Client(base_url=ALPACA_BASE, headers=_auth_headers()) as client:
+            response = client.get("/v2/account")
 
             if response.status_code != 200:
                 raise HTTPException(
@@ -144,10 +140,7 @@ def get_portfolio_summary():
 
             # Calculate daily P&L from positions
             daily_pnl = 0.0
-            positions_response = client.get(
-                f"{ALPACA_BASE}/v2/positions",
-                headers=_auth_headers()
-            )
+            positions_response = client.get("/v2/positions")
 
             if positions_response.status_code == 200:
                 positions = positions_response.json()
@@ -176,13 +169,8 @@ def get_portfolio_summary():
 def get_positions():
     """Get current positions from Alpaca"""
     try:
-        headers = _auth_headers()
-        url = f"{ALPACA_BASE}/v2/positions"
-        logger.info(f"Making request to: {url}")
-        logger.info(f"Headers keys: {list(headers.keys())}")
-
-        with httpx.Client() as client:
-            response = client.get(url, headers=headers)
+        with httpx.Client(base_url=ALPACA_BASE, headers=_auth_headers(), timeout=10) as client:
+            response = client.get("/v2/positions")
 
             if response.status_code != 200:
                 raise HTTPException(
@@ -193,10 +181,7 @@ def get_positions():
             positions = response.json()
 
             # Get portfolio value for weight calculation
-            account_response = client.get(
-                f"{ALPACA_BASE}/v2/account",
-                headers=_auth_headers()
-            )
+            account_response = client.get("/v2/account")
 
             portfolio_value = 1.0  # Default to avoid division by zero
             if account_response.status_code == 200:
@@ -233,11 +218,10 @@ def get_positions():
 def get_performance():
     """Get portfolio performance metrics"""
     try:
-        with httpx.Client() as client:
+        with httpx.Client(base_url=ALPACA_BASE, headers=_auth_headers()) as client:
             # Get portfolio history for performance calculation
             response = client.get(
-                f"{ALPACA_BASE}/v2/account/portfolio/history",
-                headers=_auth_headers(),
+                "/v2/account/portfolio/history",
                 params={"period": "1M", "timeframe": "1D"}
             )
 
