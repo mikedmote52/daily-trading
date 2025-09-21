@@ -20,11 +20,11 @@ RUN pip install --no-cache-dir --upgrade pip \
 COPY . .
 
 # Expose port
-EXPOSE 10000
+EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl --fail http://localhost:${PORT:-10000}/health || exit 1
+    CMD curl --fail http://localhost:${PORT:-8000}/health || exit 1
 
 # Start the application
-CMD ["sh", "-c", "python portfolio_api.py"]
+CMD ["sh", "-c", "uvicorn portfolio_api:app --host 0.0.0.0 --port ${PORT} --workers 1"]
