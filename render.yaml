@@ -112,13 +112,13 @@ services:
       - key: ENVIRONMENT
         value: production
 
-  # Frontend - React Trading UI
+  # Frontend - React Trading UI (Fixed)
   - type: static
-    name: alphastack-frontend
+    name: alphastack-frontend-v2
     repo: https://github.com/mikedmote52/daily-trading.git
     rootDir: agents/frontend
     # React Scripts build
-    buildCommand: npm install --legacy-peer-deps && npm run build
+    buildCommand: chmod +x render-build.sh && ./render-build.sh
     publishPath: build
     autoDeploy: true
     envVars:
