@@ -1,3 +1,4 @@
-Deployment trigger: 2025-09-21 10:57:00
-This file forces Render to detect changes and redeploy.
-Build: FORCE
+Deployment trigger: 2025-09-21 11:15:00
+CRITICAL FIX: Removed old frontend directory
+Now serving correct frontend from /agents/frontend/
+Build: CORRECT_FRONTEND
