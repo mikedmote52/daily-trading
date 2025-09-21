@@ -65,6 +65,19 @@ class UniversalDiscoverySystem:
         self.universe_df = None
         self.cache = {}
 
+        # Performance optimization: Cache timestamps
+        self.cache_timestamps = {}
+        self.CACHE_TTL = 300  # 5 minutes cache TTL
+
+        # Performance monitoring
+        self.performance_metrics = {
+            'gate_a_time': 0,
+            'gate_b_time': 0,
+            'gate_c_time': 0,
+            'scoring_time': 0,
+            'total_time': 0
+        }
+
         # CRITICAL SAFEGUARDS - PREFER REAL DATA BUT GRACEFUL DEGRADATION
         self.REAL_DATA_ONLY = True
         self.FAIL_ON_MOCK_DATA = False  # Allow graceful fallback in production
@@ -975,16 +988,35 @@ class UniversalDiscoverySystem:
 
         return df_top
 
+    def _is_cache_valid(self, cache_key: str) -> bool:
+        """Check if cached data is still valid"""
+        if cache_key not in self.cache_timestamps:
+            return False
+        return (time.time() - self.cache_timestamps[cache_key]) < self.CACHE_TTL
+
+    def _set_cache(self, cache_key: str, data: Any) -> None:
+        """Set cache with timestamp"""
+        self.cache[cache_key] = data
+        self.cache_timestamps[cache_key] = time.time()
+
     def run_universal_discovery(self) -> Dict[str, Any]:
         """
-        Main discovery pipeline with optimized pre-filtering
+        Main discovery pipeline with optimized pre-filtering and performance monitoring
         """
-        logger.info("🚀 OPTIMIZED DISCOVERY STARTING - Smart Pre-Filtering")
-        start_time = time.time()
+        logger.info("🚀 OPTIMIZED DISCOVERY STARTING - Smart Pre-Filtering with Performance Monitoring")
+        pipeline_start_time = time.time()
 
         try:
-            # Step 1: Full universe loading (ALL ~5,200 stocks)
-            universe_df = self.bulk_ingest_universe()
+            # Step 1: Full universe loading (ALL ~5,200 stocks) with caching
+            universe_cache_key = "universe_snapshot"
+            if self._is_cache_valid(universe_cache_key):
+                logger.info("⚡ Using cached universe data")
+                universe_df = self.cache[universe_cache_key]
+            else:
+                universe_df = self.bulk_ingest_universe()
+                if len(universe_df) > 0:
+                    self._set_cache(universe_cache_key, universe_df)
+                    logger.info(f"✅ Cached {len(universe_df)} stocks for {self.CACHE_TTL}s")
 
             logger.info(f"UNIVERSE DEBUG: Loaded {len(universe_df)} stocks")
             if len(universe_df) > 0:
@@ -1006,34 +1038,48 @@ class UniversalDiscoverySystem:
                 # FAIL FAST - DO NOT CREATE MOCK DATA
                 return self._create_empty_result(start_time)
             
-            # Step 2: Vectorized Gate A (entire universe)
+            # Step 2: Vectorized Gate A (entire universe) with timing
+            gate_a_start = time.time()
             logger.info(f"🚪 GATE A: Processing {len(universe_df)} stocks...")
             gate_a_df = self.vectorized_gate_a(universe_df)
+            self.performance_metrics['gate_a_time'] = time.time() - gate_a_start
 
             if gate_a_df.empty:
                 logger.info("No universe data available")
-                return self._create_result([], universe_df, pd.DataFrame(), pd.DataFrame(), start_time)
+                return self._create_result([], universe_df, pd.DataFrame(), pd.DataFrame(), pipeline_start_time)
 
-            # Step 3: Gate B - Fundamental Filtering
+            # Step 3: Gate B - Fundamental Filtering with timing
+            gate_b_start = time.time()
             logger.info(f"🚪 GATE B: Processing {len(gate_a_df)} stocks...")
             gate_b_df = self.vectorized_gate_b(gate_a_df)
+            self.performance_metrics['gate_b_time'] = time.time() - gate_b_start
 
             if gate_b_df.empty:
                 logger.warning("No stocks passed Gate B")
-                return self._create_result([], universe_df, gate_a_df, pd.DataFrame(), start_time)
+                return self._create_result([], universe_df, gate_a_df, pd.DataFrame(), pipeline_start_time)
 
-            # Step 4: Gate C - Final Accumulation Scoring
+            # Step 4: Gate C - Final Accumulation Scoring with timing
+            gate_c_start = time.time()
             logger.info(f"🚪 GATE C: Processing {len(gate_b_df)} stocks...")
             final_candidates = self.gate_c_enrichment(gate_b_df)
+            self.performance_metrics['gate_c_time'] = time.time() - gate_c_start
 
             if final_candidates.empty:
                 logger.warning("No stocks passed Gate C")
                 return self._create_result([], universe_df, gate_a_df, gate_b_df, start_time)
 
-            # Step 5: Create final result
-            result = self._create_result(final_candidates, universe_df, gate_a_df, gate_b_df, start_time)
+            # Step 5: Create final result with performance metrics
+            self.performance_metrics['total_time'] = time.time() - pipeline_start_time
+            result = self._create_result(final_candidates, universe_df, gate_a_df, gate_b_df, pipeline_start_time)
+
+            # Add performance metrics to result
+            result['performance_metrics'] = self.performance_metrics.copy()
 
             logger.info("✅ UNIVERSAL DISCOVERY COMPLETE")
+            logger.info(f"⏱️ Performance: Gate A: {self.performance_metrics['gate_a_time']:.2f}s, " +
+                       f"Gate B: {self.performance_metrics['gate_b_time']:.2f}s, " +
+                       f"Gate C: {self.performance_metrics['gate_c_time']:.2f}s, " +
+                       f"Total: {self.performance_metrics['total_time']:.2f}s")
             self._log_summary(result)
 
             return result

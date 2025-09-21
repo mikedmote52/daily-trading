@@ -8,7 +8,7 @@ export class DiscoveryService {
    */
   static async getExplosiveStocks(): Promise<StockAnalysis[]> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/stocks/discover`, {
+      const response = await fetch(`https://alphastack-discovery.onrender.com/signals/top`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json'
@@ -21,23 +21,23 @@ export class DiscoveryService {
 
       const data = await response.json();
 
-      // Transform backend data to frontend format
+      // Transform discovery API data to frontend format
       return data.map((stock: any) => ({
         symbol: stock.symbol,
-        name: stock.name || stock.symbol,
+        name: stock.symbol, // Discovery API doesn't provide company names
         price: parseFloat(stock.price),
-        change: parseFloat(stock.change || 0),
-        change_percent: parseFloat(stock.change_percent || 0),
-        volume: parseInt(stock.volume),
-        market_cap: stock.market_cap ? parseFloat(stock.market_cap) : null,
-        pe_ratio: stock.pe_ratio ? parseFloat(stock.pe_ratio) : null,
-        short_interest: stock.short_interest ? parseFloat(stock.short_interest) : null,
-        volatility: parseFloat(stock.volatility),
-        momentum_score: parseFloat(stock.momentum_score),
-        volume_score: parseFloat(stock.volume_score),
-        ai_score: parseInt(stock.ai_score),
-        signals: Array.isArray(stock.signals) ? stock.signals : [],
-        recommendation: stock.recommendation || 'HOLD'
+        change: 0, // Not provided by discovery API
+        change_percent: 0, // Not provided by discovery API
+        volume: parseInt(stock.volume || 0),
+        market_cap: null, // Not provided by discovery API
+        pe_ratio: null, // Not provided by discovery API
+        short_interest: null, // Not provided by discovery API
+        volatility: parseFloat(stock.rvol || 0), // Use RVOL as volatility proxy
+        momentum_score: parseFloat(stock.score || 70), // Use discovery score
+        volume_score: parseFloat(stock.rvol || 1), // Use RVOL as volume score
+        ai_score: Math.round(parseFloat(stock.score || 70)), // Use discovery score as AI score
+        signals: [stock.reason || 'Discovery Signal'], // Use reason as signal
+        recommendation: 'BUY' // Discovery API only returns buy candidates
       }));
 
     } catch (error) {

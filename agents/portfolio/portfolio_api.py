@@ -4,7 +4,7 @@ Portfolio API Service
 FastAPI service to expose portfolio management functionality
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import asyncio
@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 import httpx
 from dotenv import load_dotenv
+import time
 
 # Load environment variables
 load_dotenv()
@@ -44,10 +45,58 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Environment configuration
+# Rate limiting storage
+request_timestamps = {}
+RATE_LIMIT_REQUESTS = 15  # requests per minute (higher for portfolio data)
+RATE_LIMIT_WINDOW = 60    # seconds
+
+# Rate limiting middleware
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """Rate limiting middleware to prevent API abuse"""
+    # Skip rate limiting for health checks
+    if request.url.path == "/health":
+        return await call_next(request)
+
+    # Get client IP
+    client_ip = request.client.host if request.client else "unknown"
+    current_time = time.time()
+
+    # Clean old timestamps
+    if client_ip in request_timestamps:
+        request_timestamps[client_ip] = [
+            timestamp for timestamp in request_timestamps[client_ip]
+            if current_time - timestamp < RATE_LIMIT_WINDOW
+        ]
+    else:
+        request_timestamps[client_ip] = []
+
+    # Check rate limit
+    if len(request_timestamps[client_ip]) >= RATE_LIMIT_REQUESTS:
+        logger.warning(f"⚠️ Rate limit exceeded for {client_ip}")
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded. Maximum {RATE_LIMIT_REQUESTS} requests per {RATE_LIMIT_WINDOW} seconds."
+        )
+
+    # Add current timestamp
+    request_timestamps[client_ip].append(current_time)
+
+    # Process request
+    response = await call_next(request)
+
+    # Add rate limit headers
+    remaining = RATE_LIMIT_REQUESTS - len(request_timestamps[client_ip])
+    response.headers["X-RateLimit-Limit"] = str(RATE_LIMIT_REQUESTS)
+    response.headers["X-RateLimit-Remaining"] = str(remaining)
+    response.headers["X-RateLimit-Reset"] = str(int(current_time + RATE_LIMIT_WINDOW))
+
+    return response
+
+# Environment configuration - Match exact pattern from working orders service
 ALPACA_BASE = os.environ.get("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
-ALPACA_KEY = os.environ.get("ALPACA_KEY", "")
-ALPACA_SECRET = os.environ.get("ALPACA_SECRET", "")
+ALPACA_KEY = os.environ.get("ALPACA_KEY", "").strip()
+ALPACA_SECRET = os.environ.get("ALPACA_SECRET", "").strip()
 
 def _auth_headers():
     """Get Alpaca authentication headers"""
@@ -86,39 +135,78 @@ class PerformanceMetrics(BaseModel):
 
 @app.get("/health")
 async def health():
-    """Health check endpoint"""
+    """Enhanced health check endpoint with dependency validation"""
+    health_status = {
+        "status": "healthy",
+        "service": "portfolio-api",
+        "version": "1.0.0",
+        "timestamp": datetime.now().isoformat(),
+        "dependencies": {}
+    }
+
     alpaca_configured = bool(ALPACA_KEY and ALPACA_SECRET)
 
-    # Test Alpaca connection
+    # Test Alpaca connection with detailed diagnostics
     alpaca_connected = False
     connection_error = None
+    account_balance = None
 
     if alpaca_configured:
         try:
+            start_time = time.time()
             with httpx.Client(base_url=ALPACA_BASE, headers=_auth_headers()) as client:
-                response = client.get(
-                    "/v2/account",
-                    timeout=5.0
-                )
-                alpaca_connected = response.status_code == 200
-                if not alpaca_connected:
-                    connection_error = f"HTTP {response.status_code}: {response.text[:100]}"
-        except Exception as e:
-            alpaca_connected = False
-            connection_error = str(e)[:100]
+                response = client.get("/v2/account", timeout=10.0)
+                latency_ms = int((time.time() - start_time) * 1000)
 
-    return {
-        "status": "healthy",
-        "service": "portfolio-api",
+                if response.status_code == 200:
+                    alpaca_connected = True
+                    account_data = response.json()
+                    account_balance = account_data.get("portfolio_value", "unknown")
+                    health_status["dependencies"]["alpaca"] = {
+                        "status": "connected",
+                        "latency_ms": latency_ms,
+                        "account_balance": account_balance
+                    }
+                else:
+                    connection_error = f"HTTP {response.status_code}: {response.text[:100]}"
+                    health_status["dependencies"]["alpaca"] = {
+                        "status": "authentication_failed",
+                        "error": connection_error,
+                        "latency_ms": latency_ms
+                    }
+                    health_status["status"] = "unhealthy"
+        except httpx.TimeoutException:
+            connection_error = "Connection timeout"
+            health_status["dependencies"]["alpaca"] = {"status": "timeout", "error": connection_error}
+            health_status["status"] = "degraded"
+        except Exception as e:
+            connection_error = str(e)[:100]
+            health_status["dependencies"]["alpaca"] = {"status": "failed", "error": connection_error}
+            health_status["status"] = "unhealthy"
+    else:
+        health_status["dependencies"]["alpaca"] = {"status": "not_configured"}
+        health_status["status"] = "unhealthy"
+
+    # Environment variables check
+    health_status["dependencies"]["environment"] = {
+        "alpaca_key": bool(ALPACA_KEY),
+        "alpaca_secret": bool(ALPACA_SECRET),
+        "alpaca_base_url": bool(ALPACA_BASE),
+        "alpaca_key_length": len(ALPACA_KEY) if ALPACA_KEY else 0
+    }
+
+    # Legacy fields for backwards compatibility
+    health_status.update({
         "alpaca_configured": alpaca_configured,
         "alpaca_connected": alpaca_connected,
         "alpaca_base": ALPACA_BASE,
         "alpaca_key_present": bool(ALPACA_KEY),
         "alpaca_secret_present": bool(ALPACA_SECRET),
         "alpaca_key_length": len(ALPACA_KEY) if ALPACA_KEY else 0,
-        "connection_error": connection_error,
-        "timestamp": datetime.now().isoformat()
-    }
+        "connection_error": connection_error
+    })
+
+    return health_status
 
 @app.get("/portfolio", response_model=PortfolioSummary)
 def get_portfolio_summary():
