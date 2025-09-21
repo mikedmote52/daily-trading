@@ -91,6 +91,9 @@ app = FastAPI(
 # CORS middleware
 ALLOWED_ORIGINS = [
     "https://alphastack-frontend.onrender.com",
+    "https://daily-trading-alphastack-portfolio.onrender.com",
+    "https://alphastack-discovery.onrender.com",
+    "https://alphastack-orders.onrender.com",
     "http://localhost:5173",
     "http://localhost:3000"
 ]
@@ -101,6 +104,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Rate limiting and metrics middleware
@@ -305,6 +309,55 @@ async def run_discovery():
     except Exception as e:
         logger.error(f"❌ Discovery scan failed: {e}")
         raise HTTPException(status_code=500, detail=f"Discovery failed: {str(e)}")
+
+@app.get("/scan/{scan_id}")
+async def get_scan_results(scan_id: str):
+    """Get results for a specific scan ID"""
+    if not redis_client:
+        raise HTTPException(status_code=503, detail="Redis not available")
+
+    try:
+        # Try to get cached results for this scan
+        cached_data = redis_client.get(f"discovery:{scan_id}")
+        if cached_data:
+            candidates = json.loads(cached_data)
+            return {
+                "scan_id": scan_id,
+                "status": "completed",
+                "candidates": candidates
+            }
+        else:
+            # Check if scan is recent (within last hour)
+            try:
+                timestamp = int(scan_id.split('_')[1])
+                current_time = int(datetime.now().timestamp())
+                if current_time - timestamp < 3600:  # Less than 1 hour old
+                    return {
+                        "scan_id": scan_id,
+                        "status": "running",
+                        "candidates": []
+                    }
+            except:
+                pass
+
+            # Scan not found or too old
+            return {
+                "scan_id": scan_id,
+                "status": "not_found",
+                "candidates": []
+            }
+    except Exception as e:
+        logger.error(f"Error fetching scan results: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch scan results")
+
+@app.get("/debug/simple")
+async def debug_simple_format():
+    """Debug endpoint with simple format for frontend testing"""
+    return [
+        {"symbol": "FATN", "price": 8.89, "score": 75, "volume": 1570.4, "reason": "Extreme volume surge"},
+        {"symbol": "AGMH", "price": 12.45, "score": 73, "volume": 845.2, "reason": "Strong accumulation"},
+        {"symbol": "VRME", "price": 15.67, "score": 71, "volume": 623.1, "reason": "Breakout pattern"}
+    ]
 
 @app.get("/signals/top")
 async def get_top_signals():
