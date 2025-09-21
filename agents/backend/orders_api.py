@@ -233,6 +233,23 @@ def get_positions():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Positions fetch failed: {str(e)}")
 
+@app.get("/debug-auth")
+def debug_auth():
+    """Debug endpoint to compare API keys with portfolio service"""
+    key_preview = f"{ALPACA_KEY[:4]}...{ALPACA_KEY[-4:]}" if len(ALPACA_KEY) > 8 else ALPACA_KEY
+    secret_preview = f"{ALPACA_SECRET[:4]}...{ALPACA_SECRET[-4:]}" if len(ALPACA_SECRET) > 8 else ALPACA_SECRET
+
+    return {
+        "service": "orders-api",
+        "alpaca_base": ALPACA_BASE,
+        "key_length": len(ALPACA_KEY),
+        "secret_length": len(ALPACA_SECRET),
+        "key_preview": key_preview,
+        "secret_preview": secret_preview,
+        "key_has_whitespace": ALPACA_KEY != ALPACA_KEY.strip(),
+        "secret_has_whitespace": ALPACA_SECRET != ALPACA_SECRET.strip()
+    }
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
