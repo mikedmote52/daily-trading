@@ -133,6 +133,46 @@ async def run_discovery():
         logger.error(f"❌ Discovery scan failed: {e}")
         raise HTTPException(status_code=500, detail=f"Discovery failed: {str(e)}")
 
+@app.get("/scan/{scan_id}")
+async def get_scan_results(scan_id: str):
+    """Get results for a specific scan ID"""
+    if not redis_client:
+        raise HTTPException(status_code=503, detail="Redis not available")
+
+    try:
+        # Try to get cached results for this scan
+        cached_data = redis_client.get(f"discovery:{scan_id}")
+        if cached_data:
+            candidates = json.loads(cached_data)
+            return {
+                "scan_id": scan_id,
+                "status": "completed",
+                "candidates": candidates
+            }
+        else:
+            # Check if scan is recent (within last hour)
+            try:
+                timestamp = int(scan_id.split('_')[1])
+                current_time = int(datetime.now().timestamp())
+                if current_time - timestamp < 3600:  # Less than 1 hour old
+                    return {
+                        "scan_id": scan_id,
+                        "status": "running",
+                        "candidates": []
+                    }
+            except:
+                pass
+
+            # Scan not found or too old
+            return {
+                "scan_id": scan_id,
+                "status": "not_found",
+                "candidates": []
+            }
+    except Exception as e:
+        logger.error(f"Error fetching scan results: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch scan results")
+
 @app.get("/debug/simple")
 async def debug_simple_format():
     """Debug endpoint with simple format for frontend testing"""
