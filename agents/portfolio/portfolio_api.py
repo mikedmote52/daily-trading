@@ -98,8 +98,8 @@ async def rate_limit_middleware(request: Request, call_next):
 
 # Environment configuration - Match exact pattern from working orders service
 ALPACA_BASE = os.environ.get("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
-ALPACA_KEY = os.environ.get("ALPACA_KEY", "").strip()
-ALPACA_SECRET = os.environ.get("ALPACA_SECRET", "").strip()
+ALPACA_KEY = os.environ.get("ALPACA_KEY", "").strip().strip("'\"")  # Remove quotes and whitespace
+ALPACA_SECRET = os.environ.get("ALPACA_SECRET", "").strip().strip("'\"")  # Remove quotes and whitespace
 
 def _auth_headers():
     """Get Alpaca authentication headers"""
