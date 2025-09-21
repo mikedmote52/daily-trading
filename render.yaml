@@ -82,15 +82,14 @@ services:
   # Portfolio API - Portfolio Management
   - type: web
     name: alphastack-portfolio
-    runtime: python
+    runtime: docker
     repo: https://github.com/mikedmote52/daily-trading.git
     rootDir: agents/portfolio
+    dockerfilePath: Dockerfile
     region: oregon
     plan: free
     healthCheckPath: /health
     autoDeploy: true
-    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
-    startCommand: python portfolio_api.py
     envVars:
       - key: DATABASE_URL
         fromDatabase:
