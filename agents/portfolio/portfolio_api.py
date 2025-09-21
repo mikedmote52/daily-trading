@@ -51,11 +51,14 @@ ALPACA_SECRET = os.environ.get("ALPACA_SECRET", "")
 
 def _auth_headers():
     """Get Alpaca authentication headers"""
-    return {
+    headers = {
         "APCA-API-KEY-ID": ALPACA_KEY,
         "APCA-API-SECRET-KEY": ALPACA_SECRET,
         "Content-Type": "application/json"
     }
+    logger.info(f"Auth headers: APCA-API-KEY-ID={ALPACA_KEY[:4]}...{ALPACA_KEY[-4:] if len(ALPACA_KEY) > 8 else ''}")
+    logger.info(f"ALPACA_BASE: {ALPACA_BASE}")
+    return headers
 
 class PortfolioSummary(BaseModel):
     portfolio_value: float
@@ -173,11 +176,13 @@ def get_portfolio_summary():
 def get_positions():
     """Get current positions from Alpaca"""
     try:
+        headers = _auth_headers()
+        url = f"{ALPACA_BASE}/v2/positions"
+        logger.info(f"Making request to: {url}")
+        logger.info(f"Headers keys: {list(headers.keys())}")
+
         with httpx.Client() as client:
-            response = client.get(
-                f"{ALPACA_BASE}/v2/positions",
-                headers=_auth_headers()
-            )
+            response = client.get(url, headers=headers)
 
             if response.status_code != 200:
                 raise HTTPException(
