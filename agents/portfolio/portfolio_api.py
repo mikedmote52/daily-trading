@@ -528,11 +528,23 @@ def test_orders_pattern():
         alpaca_key = os.environ.get("ALPACA_KEY", "")
         alpaca_secret = os.environ.get("ALPACA_SECRET", "")
 
-        # EXACT same headers function as orders service
+        # Debug: Show exact values being used
+        debug_info = {
+            "raw_key": repr(alpaca_key),
+            "raw_secret": repr(alpaca_secret),
+            "key_length": len(alpaca_key),
+            "secret_length": len(alpaca_secret),
+            "key_has_whitespace": alpaca_key != alpaca_key.strip(),
+            "secret_has_whitespace": alpaca_secret != alpaca_secret.strip(),
+            "key_stripped": alpaca_key.strip(),
+            "secret_stripped": alpaca_secret.strip()
+        }
+
+        # EXACT same headers function as orders service with stripped values
         def orders_auth_headers():
             return {
-                "APCA-API-KEY-ID": alpaca_key,
-                "APCA-API-SECRET-KEY": alpaca_secret,
+                "APCA-API-KEY-ID": alpaca_key.strip(),
+                "APCA-API-SECRET-KEY": alpaca_secret.strip(),
                 "Content-Type": "application/json"
             }
 
@@ -545,7 +557,8 @@ def test_orders_pattern():
                     "status": "FAILED",
                     "status_code": response.status_code,
                     "response": response.text[:200],
-                    "key_preview": f"{alpaca_key[:4]}...{alpaca_key[-4:]}" if len(alpaca_key) > 8 else alpaca_key
+                    "key_preview": f"{alpaca_key[:4]}...{alpaca_key[-4:]}" if len(alpaca_key) > 8 else alpaca_key,
+                    "debug": debug_info
                 }
 
             account_data = response.json()
@@ -556,11 +569,12 @@ def test_orders_pattern():
             "buying_power": account_data.get("buying_power"),
             "cash": account_data.get("cash"),
             "portfolio_value": account_data.get("portfolio_value"),
-            "key_preview": f"{alpaca_key[:4]}...{alpaca_key[-4:]}" if len(alpaca_key) > 8 else alpaca_key
+            "key_preview": f"{alpaca_key[:4]}...{alpaca_key[-4:]}" if len(alpaca_key) > 8 else alpaca_key,
+            "debug": debug_info
         }
 
     except Exception as e:
-        return {"status": "ERROR", "error": str(e)}
+        return {"status": "ERROR", "error": str(e), "debug": debug_info if 'debug_info' in locals() else None}
 
 if __name__ == "__main__":
     import uvicorn

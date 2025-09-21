@@ -8,6 +8,7 @@ export class DiscoveryService {
    */
   static async getExplosiveStocks(): Promise<StockAnalysis[]> {
     try {
+      console.log('🚀 Fetching from discovery API...');
       const response = await fetch(`https://alphastack-discovery.onrender.com/signals/top`, {
         method: 'GET',
         headers: {
@@ -15,14 +16,23 @@ export class DiscoveryService {
         }
       });
 
+      console.log(`📡 Discovery API response: ${response.status} ${response.statusText}`);
+
       if (!response.ok) {
         throw new Error(`Discovery API error: ${response.status} ${response.statusText}`);
       }
 
       const data = await response.json();
+      console.log(`✅ Discovery API returned ${data.length} stocks:`, data.map(s => s.symbol));
+
+      // Validate data structure
+      if (!Array.isArray(data)) {
+        console.error('❌ Discovery API returned non-array data:', data);
+        throw new Error('Invalid data format from discovery API');
+      }
 
       // Transform discovery API data to frontend format
-      return data.map((stock: any) => ({
+      const transformedData = data.map((stock: any) => ({
         symbol: stock.symbol,
         name: stock.symbol, // Discovery API doesn't provide company names
         price: parseFloat(stock.price),
@@ -40,16 +50,15 @@ export class DiscoveryService {
         recommendation: 'BUY' // Discovery API only returns buy candidates
       }));
 
-    } catch (error) {
-      console.error('Failed to fetch explosive stocks:', error);
+      console.log(`🎯 Transformed ${transformedData.length} stocks for frontend`);
+      return transformedData;
 
-      // Fallback: Fetch from Redis cache or return empty array
-      try {
-        return await this.getExplosiveStocksFromRedis();
-      } catch (redisError) {
-        console.error('Redis fallback failed:', redisError);
-        throw new Error(`Discovery system unavailable: ${error.message}`);
-      }
+    } catch (error) {
+      console.error('❌ Discovery API failed:', error);
+
+      // Skip Redis fallback and just return empty array with clear logging
+      console.log('⚠️ Returning empty array due to discovery failure');
+      return [];
     }
   }
 
