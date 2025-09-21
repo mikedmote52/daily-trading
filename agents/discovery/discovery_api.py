@@ -149,11 +149,11 @@ async def get_top_signals():
         for candidate in candidates:
             formatted_results.append({
                 "symbol": candidate["symbol"],
-                "price": candidate["last_price"],
+                "price": candidate["price"],
                 "score": candidate["accumulation_score"],
-                "volume": candidate["day_volume"],
-                "rvol": candidate.get("rvol_sust", 0),
-                "reason": candidate.get("accumulation_reason", "Strong accumulation pattern detected")
+                "volume": candidate.get("volume_surge", 0),
+                "rvol": candidate.get("volume_surge", 0),
+                "reason": candidate.get("thesis", "Strong accumulation pattern detected")
             })
 
         return formatted_results
