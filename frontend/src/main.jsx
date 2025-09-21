@@ -138,16 +138,46 @@ function Portfolio({ onRefresh }) {
     try {
       setPortfolio(prev => ({ ...prev, loading: true, error: null }));
 
-      // Fetch positions
-      const positionsResponse = await fetch(`${portfolioBase}/positions`);
-      const accountResponse = await fetch(`${portfolioBase}/account`);
+      // Try portfolio service first, fallback to orders API if unavailable
+      let positions = [];
+      let account = null;
 
-      if (!positionsResponse.ok) {
-        throw new Error(`Portfolio API error: ${positionsResponse.status}`);
+      try {
+        console.log("Trying portfolio service...");
+        const positionsResponse = await fetch(`${portfolioBase}/positions`);
+        const accountResponse = await fetch(`${portfolioBase}/account`);
+
+        if (positionsResponse.ok && accountResponse.ok) {
+          positions = await positionsResponse.json();
+          account = await accountResponse.json();
+          console.log("✅ Portfolio service working");
+        } else {
+          throw new Error("Portfolio service unavailable");
+        }
+      } catch (portfolioError) {
+        console.log("❌ Portfolio service down, using orders API fallback");
+
+        // Fallback to orders API (which we know is working)
+        const accountResponse = await fetch(`${ordersBase}/account`);
+        const positionsResponse = await fetch(`${ordersBase}/positions`);
+
+        if (accountResponse.ok) {
+          const accountData = await accountResponse.json();
+          account = {
+            account_value: parseFloat(accountData.portfolio_value || "0"),
+            cash: parseFloat(accountData.cash || "0"),
+            buying_power: parseFloat(accountData.buying_power || "0"),
+            day_trade_count: accountData.day_trade_count || 0
+          };
+        }
+
+        if (positionsResponse.ok) {
+          const positionsData = await positionsResponse.json();
+          positions = positionsData.positions || [];
+        }
+
+        console.log("✅ Orders API fallback working, positions:", positions.length);
       }
-
-      const positions = await positionsResponse.json();
-      const account = accountResponse.ok ? await accountResponse.json() : null;
 
       setPortfolio({ positions: positions || [], loading: false, error: null });
       setAccountInfo(account);
