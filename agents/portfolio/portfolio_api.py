@@ -428,6 +428,49 @@ def test_auth_endpoint():
         logger.error(f"Test auth error: {e}")
         return {"error": str(e)}
 
+@app.get("/test-orders-pattern")
+def test_orders_pattern():
+    """Test using the exact same pattern as the working orders service"""
+    try:
+        # EXACT same environment variable access as orders service
+        alpaca_base = os.environ.get("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+        alpaca_key = os.environ.get("ALPACA_KEY", "")
+        alpaca_secret = os.environ.get("ALPACA_SECRET", "")
+
+        # EXACT same headers function as orders service
+        def orders_auth_headers():
+            return {
+                "APCA-API-KEY-ID": alpaca_key,
+                "APCA-API-SECRET-KEY": alpaca_secret,
+                "Content-Type": "application/json"
+            }
+
+        # EXACT same pattern as orders service account endpoint
+        with httpx.Client(base_url=alpaca_base, headers=orders_auth_headers(), timeout=10) as client:
+            response = client.get("/v2/account")
+
+            if response.status_code >= 300:
+                return {
+                    "status": "FAILED",
+                    "status_code": response.status_code,
+                    "response": response.text[:200],
+                    "key_preview": f"{alpaca_key[:4]}...{alpaca_key[-4:]}" if len(alpaca_key) > 8 else alpaca_key
+                }
+
+            account_data = response.json()
+
+        return {
+            "status": "SUCCESS",
+            "account_id": account_data.get("id"),
+            "buying_power": account_data.get("buying_power"),
+            "cash": account_data.get("cash"),
+            "portfolio_value": account_data.get("portfolio_value"),
+            "key_preview": f"{alpaca_key[:4]}...{alpaca_key[-4:]}" if len(alpaca_key) > 8 else alpaca_key
+        }
+
+    except Exception as e:
+        return {"status": "ERROR", "error": str(e)}
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 10000))
