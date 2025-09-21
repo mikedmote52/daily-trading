@@ -385,30 +385,38 @@ def portfolio_alerts():
 def test_auth_endpoint():
     """Test endpoint to debug authentication - same pattern as orders service"""
     try:
-        logger.info(f"Testing auth with ALPACA_BASE: {ALPACA_BASE}")
-        logger.info(f"ALPACA_KEY length: {len(ALPACA_KEY)}")
-        logger.info(f"ALPACA_SECRET length: {len(ALPACA_SECRET)}")
-
         # Show key/secret previews for debugging
         key_preview = f"{ALPACA_KEY[:4]}...{ALPACA_KEY[-4:]}" if len(ALPACA_KEY) > 8 else ALPACA_KEY
         secret_preview = f"{ALPACA_SECRET[:4]}...{ALPACA_SECRET[-4:]}" if len(ALPACA_SECRET) > 8 else ALPACA_SECRET
 
-        # EXACT pattern from working orders service
-        with httpx.Client(base_url=ALPACA_BASE, headers=_auth_headers(), timeout=10) as client:
-            response = client.get("/v2/positions")
+        # Test both account and positions endpoints
+        results = {}
 
-            return {
-                "status_code": response.status_code,
-                "response_text": response.text[:500],
-                "alpaca_base": ALPACA_BASE,
-                "key_length": len(ALPACA_KEY),
-                "secret_length": len(ALPACA_SECRET),
-                "key_preview": key_preview,
-                "secret_preview": secret_preview,
-                "headers_sent": list(_auth_headers().keys()),
-                "key_has_whitespace": ALPACA_KEY != ALPACA_KEY.strip(),
-                "secret_has_whitespace": ALPACA_SECRET != ALPACA_SECRET.strip()
+        with httpx.Client(base_url=ALPACA_BASE, headers=_auth_headers(), timeout=10) as client:
+            # Test account endpoint (like orders service)
+            account_response = client.get("/v2/account")
+            results["account"] = {
+                "status_code": account_response.status_code,
+                "response_text": account_response.text[:200]
             }
+
+            # Test positions endpoint
+            positions_response = client.get("/v2/positions")
+            results["positions"] = {
+                "status_code": positions_response.status_code,
+                "response_text": positions_response.text[:200]
+            }
+
+        return {
+            "alpaca_base": ALPACA_BASE,
+            "key_length": len(ALPACA_KEY),
+            "secret_length": len(ALPACA_SECRET),
+            "key_preview": key_preview,
+            "secret_preview": secret_preview,
+            "key_has_whitespace": ALPACA_KEY != ALPACA_KEY.strip(),
+            "secret_has_whitespace": ALPACA_SECRET != ALPACA_SECRET.strip(),
+            "test_results": results
+        }
 
     except Exception as e:
         logger.error(f"Test auth error: {e}")
