@@ -118,7 +118,7 @@ services:
     repo: https://github.com/mikedmote52/daily-trading.git
     rootDir: agents/frontend
     # React Scripts build
-    buildCommand: npm ci && npm run build
+    buildCommand: npm install --legacy-peer-deps && npm run build
     publishPath: build
     autoDeploy: true
     envVars:
