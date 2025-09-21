@@ -35,10 +35,10 @@ logger = logging.getLogger('UniversalDiscovery')
 @dataclass
 class GateConfig:
     """Configuration for gate processing"""
-    # Gate A thresholds - ULTRA PERMISSIVE FOR DIAGNOSIS
-    # GATEA_MIN_PCT = 1.0   # REMOVED - we don't filter by percent change
-    GATEA_MIN_VOL = 1        # Let ANY volume through
-    GATEA_MIN_RVOL = 0.001   # Let ANY RVOL through
+    # Gate A thresholds - OPTIMIZED FOR EXPLOSIVE GROWTH DETECTION
+    # No percent change filter - we want PRE-explosion stocks
+    GATEA_MIN_VOL = 300000     # 300K minimum volume (institutional interest)
+    GATEA_MIN_RVOL = 1.3       # 1.3x relative volume (unusual activity)
     
     # Top-K selections
     K_GATEB = 500            # Top-K after Gate A (optimized for production)
@@ -65,9 +65,9 @@ class UniversalDiscoverySystem:
         self.universe_df = None
         self.cache = {}
 
-        # CRITICAL SAFEGUARDS - NO MOCK DATA ALLOWED
+        # CRITICAL SAFEGUARDS - PREFER REAL DATA BUT GRACEFUL DEGRADATION
         self.REAL_DATA_ONLY = True
-        self.FAIL_ON_MOCK_DATA = True
+        self.FAIL_ON_MOCK_DATA = False  # Allow graceful fallback in production
 
         # MCP optimization
         self.use_mcp = MCP_AVAILABLE

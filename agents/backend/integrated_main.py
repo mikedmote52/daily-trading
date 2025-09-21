@@ -28,8 +28,8 @@ import yfinance as yf
 # Add the discovery system to the path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'discovery'))
 
-# Import the discovery API module
-from discovery_api import router as discovery_router
+# Import the discovery system directly (no more discovery_api wrapper)
+from universal_discovery import UniversalDiscoverySystem
 
 # Load environment variables
 load_dotenv()

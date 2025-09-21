@@ -51,14 +51,11 @@ ALPACA_SECRET = os.environ.get("ALPACA_SECRET", "")
 
 def _auth_headers():
     """Get Alpaca authentication headers"""
-    headers = {
+    return {
         "APCA-API-KEY-ID": ALPACA_KEY,
         "APCA-API-SECRET-KEY": ALPACA_SECRET,
         "Content-Type": "application/json"
     }
-    logger.info(f"Auth headers: APCA-API-KEY-ID={ALPACA_KEY[:4]}...{ALPACA_KEY[-4:] if len(ALPACA_KEY) > 8 else ''}")
-    logger.info(f"ALPACA_BASE: {ALPACA_BASE}")
-    return headers
 
 class PortfolioSummary(BaseModel):
     portfolio_value: float
@@ -383,6 +380,31 @@ def portfolio_alerts():
             }
         ]
     }
+
+@app.get("/test-auth")
+def test_auth_endpoint():
+    """Test endpoint to debug authentication - same pattern as orders service"""
+    try:
+        logger.info(f"Testing auth with ALPACA_BASE: {ALPACA_BASE}")
+        logger.info(f"ALPACA_KEY length: {len(ALPACA_KEY)}")
+        logger.info(f"ALPACA_SECRET length: {len(ALPACA_SECRET)}")
+
+        # EXACT pattern from working orders service
+        with httpx.Client(base_url=ALPACA_BASE, headers=_auth_headers(), timeout=10) as client:
+            response = client.get("/v2/positions")
+
+            return {
+                "status_code": response.status_code,
+                "response_text": response.text[:500],
+                "alpaca_base": ALPACA_BASE,
+                "key_length": len(ALPACA_KEY),
+                "secret_length": len(ALPACA_SECRET),
+                "headers_sent": list(_auth_headers().keys())
+            }
+
+    except Exception as e:
+        logger.error(f"Test auth error: {e}")
+        return {"error": str(e)}
 
 if __name__ == "__main__":
     import uvicorn
