@@ -476,4 +476,6 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     host = "0.0.0.0"
     print(f"Starting Portfolio API on {host}:{port}")
+    print(f"Environment check - ALPACA_KEY: {len(os.environ.get('ALPACA_KEY', ''))} chars")
+    print(f"Environment check - ALPACA_SECRET: {len(os.environ.get('ALPACA_SECRET', ''))} chars")
     uvicorn.run(app, host=host, port=port)
