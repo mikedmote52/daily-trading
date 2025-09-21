@@ -81,6 +81,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 @app.get("/health")
@@ -131,6 +132,15 @@ async def run_discovery():
     except Exception as e:
         logger.error(f"❌ Discovery scan failed: {e}")
         raise HTTPException(status_code=500, detail=f"Discovery failed: {str(e)}")
+
+@app.get("/debug/simple")
+async def debug_simple_format():
+    """Debug endpoint with simple format for frontend testing"""
+    return [
+        {"symbol": "FATN", "price": 8.89, "score": 75, "volume": 1570.4, "reason": "Extreme volume surge"},
+        {"symbol": "AGMH", "price": 12.45, "score": 73, "volume": 845.2, "reason": "Strong accumulation"},
+        {"symbol": "VRME", "price": 15.67, "score": 71, "volume": 623.1, "reason": "Breakout pattern"}
+    ]
 
 @app.get("/signals/top")
 async def get_top_signals():
