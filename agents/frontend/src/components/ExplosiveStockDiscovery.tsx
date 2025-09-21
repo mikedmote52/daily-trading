@@ -23,12 +23,21 @@ export const ExplosiveStockDiscovery: React.FC<ExplosiveStockDiscoveryProps> = (
     error,
     refetch
   } = useQuery<StockAnalysis[]>(
-    'explosive-stocks',
-    () => DiscoveryService.getExplosiveStocks(),
+    'explosive-stocks-v2', // New cache key to force fresh data
+    () => {
+      console.log('🚀 React Query: Fetching explosive stocks...');
+      return DiscoveryService.getExplosiveStocks();
+    },
     {
       refetchInterval: 10000, // Update every 10 seconds
       refetchIntervalInBackground: true,
-      onSuccess: () => setLastUpdateTime(new Date())
+      onSuccess: (data) => {
+        console.log('✅ React Query: Success! Received', data?.length || 0, 'stocks');
+        setLastUpdateTime(new Date());
+      },
+      onError: (error) => {
+        console.error('❌ React Query: Error fetching stocks:', error);
+      }
     }
   );
 
