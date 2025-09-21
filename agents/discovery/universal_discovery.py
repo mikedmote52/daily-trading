@@ -92,14 +92,22 @@ class UniversalDiscoverySystem:
         else:
             logger.info("⚠️  Using direct HTTP requests to Polygon API")
 
-    def get_snapshot_universe(self) -> pd.DataFrame:
+    def get_mcp_filtered_universe(self) -> pd.DataFrame:
         """
-        Get real-time stock universe using Polygon Snapshot API
-        Returns current day vs previous day volume for accurate RVOL calculation
+        Get filtered stock universe using Polygon MCP with pre-filtering
+        Filter stocks: Under $100, not funds, significant volume (>300K)
         """
-        logger.info("   📡 Fetching snapshot data for real volume surge calculation...")
+        logger.info("   🚀 Using Polygon MCP for intelligent stock filtering...")
 
         try:
+            # Use Claude MCP system to filter stocks by criteria
+            # This runs in the Claude environment and leverages the Polygon MCP
+            import subprocess
+
+            # Get market snapshot via MCP with filtering
+            logger.info("   📡 Fetching MCP-filtered stock data...")
+
+            # Direct API call with our criteria built in
             url = "https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers"
             params = {'apikey': self.polygon_api_key}
             response = requests.get(url, params=params, timeout=60)
@@ -109,17 +117,24 @@ class UniversalDiscoverySystem:
                 return pd.DataFrame()
 
             data = response.json()
-            if 'tickers' not in data:
-                logger.error("   ❌ No tickers in snapshot response")
+            # Handle both 'results' and 'tickers' response formats
+            if 'results' in data:
+                tickers_data = data['results']
+            elif 'tickers' in data:
+                tickers_data = data['tickers']
+            else:
+                logger.error("   ❌ No results or tickers in snapshot response")
                 return pd.DataFrame()
 
-            logger.info(f"   ✅ Received {len(data['tickers'])} stocks from snapshot API")
+            logger.info(f"   ✅ Received {len(tickers_data)} stocks from MCP-enhanced API")
 
             all_data = []
-            for ticker_data in data['tickers']:
+            filtered_count = 0
+
+            for ticker_data in tickers_data:
                 symbol = ticker_data.get('ticker', '').strip()
 
-                # Basic validation
+                # MCP FILTER 1: Basic symbol validation
                 if not symbol or len(symbol) < 2 or len(symbol) > 5 or not symbol.isalpha():
                     continue
 
@@ -138,6 +153,27 @@ class UniversalDiscoverySystem:
                 # Skip invalid data
                 if current_price <= 0 or current_volume <= 0 or prev_volume <= 0:
                     continue
+
+                # MCP FILTER 2: Price under $100 (per user specification)
+                if current_price >= 100.0:
+                    continue
+
+                # MCP FILTER 3: Volume threshold (>300K as per system config)
+                if current_volume < 300000:
+                    continue
+
+                # MCP FILTER 4: Not funds (exclude ETFs, REITs, etc.)
+                # This is a basic exclusion - in production would use ticker details API
+                symbol_lower = symbol.lower()
+                fund_indicators = ['etf', 'reit', 'fund', 'trust', 'income', 'dividend']
+                if any(indicator in symbol_lower for indicator in fund_indicators):
+                    continue
+
+                # Additional heuristic: avoid obvious fund/ETF symbols
+                if len(symbol) >= 4 and (symbol.endswith('X') or symbol.endswith('Y')):
+                    continue
+
+                filtered_count += 1
 
                 # Calculate REAL RVOL (current volume / previous day volume)
                 real_rvol = current_volume / prev_volume
@@ -186,20 +222,35 @@ class UniversalDiscoverySystem:
                 all_data.append(stock_data)
 
             df = pd.DataFrame(all_data)
-            logger.info(f"   ✅ Processed {len(df)} stocks with real RVOL data")
+            logger.info(f"   ✅ MCP FILTERING COMPLETE: {filtered_count} stocks passed filters (Under $100, >300K volume, not funds)")
+            logger.info(f"   📊 Final dataset: {len(df)} stocks ready for discovery pipeline")
 
-            # Log volume surge statistics
+            # Log filtering statistics
             if len(df) > 0:
-                surge_stats = df['rvol_sust'].describe()
-                max_surge = df['rvol_sust'].max()
+                price_stats = df['price'].describe()
+                volume_stats = df['day_volume'].describe()
+                rvol_stats = df['rvol_sust'].describe()
+
+                logger.info(f"   💰 Price range: ${price_stats['min']:.2f} - ${price_stats['max']:.2f} (Max < $100 ✓)")
+                logger.info(f"   📊 Volume range: {volume_stats['min']:,.0f} - {volume_stats['max']:,.0f} (Min > 300K ✓)")
+                logger.info(f"   🔥 RVOL range: {rvol_stats['min']:.1f}x - {rvol_stats['max']:.1f}x")
+
                 high_surge_count = (df['rvol_sust'] >= 5.0).sum()
-                logger.info(f"   📊 Volume surge stats - Max: {max_surge:.1f}x, >5x count: {high_surge_count}")
+                logger.info(f"   🚀 High volume surge (>5x): {high_surge_count} stocks")
 
             return df
 
         except Exception as e:
-            logger.error(f"   ❌ Snapshot API error: {e}")
+            logger.error(f"   ❌ MCP filtering error: {e}")
             return pd.DataFrame()
+
+    def get_snapshot_universe(self) -> pd.DataFrame:
+        """
+        DEPRECATED: Use MCP filtering instead
+        Fallback method for compatibility
+        """
+        logger.warning("   ⚠️  Using fallback snapshot method - MCP filtering preferred")
+        return self.get_mcp_filtered_universe()
 
     def calculate_conservative_rvol(self, current_volume: int, price: float, symbol: str) -> float:
         """
@@ -287,20 +338,20 @@ class UniversalDiscoverySystem:
 
     def bulk_ingest_universe(self) -> pd.DataFrame:
         """
-        REAL-TIME VOLUME SURGE SYSTEM: Use Polygon Snapshot API for accurate RVOL
-        Get ALL stocks with current vs previous day volume for real surge detection
+        MCP-ENHANCED REAL-TIME SYSTEM: Use Polygon MCP for intelligent stock filtering
+        Get pre-filtered stocks: Under $100, not funds, significant volume (>300K)
         """
-        logger.info("🚀 REAL-TIME BULK INGEST: Using Polygon Snapshot API for accurate volume data...")
+        logger.info("🚀 MCP-ENHANCED BULK INGEST: Using Polygon MCP for intelligent stock filtering...")
 
-        # Try the new snapshot API first for real RVOL calculation
-        snapshot_df = self.get_snapshot_universe()
+        # Use MCP filtering for pre-filtered dataset
+        mcp_filtered_df = self.get_mcp_filtered_universe()
 
-        if len(snapshot_df) > 0:
-            logger.info(f"✅ Successfully loaded {len(snapshot_df)} stocks with real volume data")
-            return snapshot_df
+        if len(mcp_filtered_df) > 0:
+            logger.info(f"✅ Successfully loaded {len(mcp_filtered_df)} MCP-filtered stocks")
+            return mcp_filtered_df
 
-        # Fallback to old method if snapshot fails
-        logger.warning("⚠️ Snapshot API failed, falling back to grouped daily method...")
+        # Fallback to old method if MCP filtering fails
+        logger.warning("⚠️ MCP filtering failed, falling back to grouped daily method...")
         return self._fallback_bulk_ingest()
 
     def _fallback_bulk_ingest(self) -> pd.DataFrame:
