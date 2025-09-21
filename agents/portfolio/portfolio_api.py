@@ -52,8 +52,8 @@ ALPACA_SECRET = os.environ.get("ALPACA_SECRET", "")
 def _auth_headers():
     """Get Alpaca authentication headers"""
     return {
-        "APCA-API-KEY-ID": ALPACA_KEY.strip(),
-        "APCA-API-SECRET-KEY": ALPACA_SECRET.strip(),
+        "APCA-API-KEY-ID": ALPACA_KEY,
+        "APCA-API-SECRET-KEY": ALPACA_SECRET,
         "Content-Type": "application/json"
     }
 
