@@ -83,7 +83,7 @@ services:
   - type: static
     name: alphastack-frontend
     repo: https://github.com/mikedmote52/daily-trading.git
-    rootDir: frontend
+    rootDir: agents/frontend
     # Force devDependencies (vite) to install, then build
     buildCommand: npm ci --include=dev && npm run build
     publishPath: dist
