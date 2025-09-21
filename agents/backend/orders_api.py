@@ -26,12 +26,14 @@ app = FastAPI(
 
 # CORS middleware for frontend communication
 ALLOWED_ORIGINS = [
-    "https://alphastack-frontend.onrender.com",  # Render static URL
+    "https://alphastack-frontend.onrender.com",      # Original frontend
+    "https://alphastack-frontend-mcp.onrender.com",  # New MCP-enhanced frontend
     "https://daily-trading-alphastack-portfolio.onrender.com",
     "https://alphastack-discovery.onrender.com",
     "https://alphastack-orders.onrender.com",
-    "http://localhost:5173",                     # local dev
-    "http://localhost:3000"
+    "http://localhost:5173",                         # local dev
+    "http://localhost:3000",
+    "*"  # Allow all origins for debugging (remove in production)
 ]
 
 app.add_middleware(
