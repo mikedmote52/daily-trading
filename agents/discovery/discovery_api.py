@@ -68,6 +68,9 @@ app = FastAPI(
 # CORS middleware
 ALLOWED_ORIGINS = [
     "https://alphastack-frontend.onrender.com",
+    "https://daily-trading-alphastack-portfolio.onrender.com",
+    "https://alphastack-discovery.onrender.com",
+    "https://alphastack-orders.onrender.com",
     "http://localhost:5173",
     "http://localhost:3000"
 ]
