@@ -389,10 +389,13 @@ def test_auth_endpoint():
         key_preview = f"{ALPACA_KEY[:4]}...{ALPACA_KEY[-4:]}" if len(ALPACA_KEY) > 8 else ALPACA_KEY
         secret_preview = f"{ALPACA_SECRET[:4]}...{ALPACA_SECRET[-4:]}" if len(ALPACA_SECRET) > 8 else ALPACA_SECRET
 
+        # Get the exact headers that will be sent
+        headers = _auth_headers()
+
         # Test both account and positions endpoints
         results = {}
 
-        with httpx.Client(base_url=ALPACA_BASE, headers=_auth_headers(), timeout=10) as client:
+        with httpx.Client(base_url=ALPACA_BASE, headers=headers, timeout=10) as client:
             # Test account endpoint (like orders service)
             account_response = client.get("/v2/account")
             results["account"] = {
@@ -415,6 +418,9 @@ def test_auth_endpoint():
             "secret_preview": secret_preview,
             "key_has_whitespace": ALPACA_KEY != ALPACA_KEY.strip(),
             "secret_has_whitespace": ALPACA_SECRET != ALPACA_SECRET.strip(),
+            "stripped_key_preview": f"{ALPACA_KEY.strip()[:4]}...{ALPACA_KEY.strip()[-4:]}",
+            "stripped_secret_preview": f"{ALPACA_SECRET.strip()[:4]}...{ALPACA_SECRET.strip()[-4:]}",
+            "headers_preview": {k: v[:10] + "..." if len(v) > 10 else v for k, v in headers.items()},
             "test_results": results
         }
 
