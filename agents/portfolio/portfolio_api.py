@@ -95,8 +95,8 @@ async def health():
 
     if alpaca_configured:
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
+            with httpx.Client() as client:
+                response = client.get(
                     f"{ALPACA_BASE}/v2/account",
                     headers=_auth_headers(),
                     timeout=5.0
@@ -122,11 +122,11 @@ async def health():
     }
 
 @app.get("/portfolio", response_model=PortfolioSummary)
-async def get_portfolio_summary():
+def get_portfolio_summary():
     """Get portfolio summary from Alpaca"""
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
+        with httpx.Client() as client:
+            response = client.get(
                 f"{ALPACA_BASE}/v2/account",
                 headers=_auth_headers()
             )
@@ -141,7 +141,7 @@ async def get_portfolio_summary():
 
             # Calculate daily P&L from positions
             daily_pnl = 0.0
-            positions_response = await client.get(
+            positions_response = client.get(
                 f"{ALPACA_BASE}/v2/positions",
                 headers=_auth_headers()
             )
@@ -170,11 +170,11 @@ async def get_portfolio_summary():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/positions", response_model=List[Position])
-async def get_positions():
+def get_positions():
     """Get current positions from Alpaca"""
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
+        with httpx.Client() as client:
+            response = client.get(
                 f"{ALPACA_BASE}/v2/positions",
                 headers=_auth_headers()
             )
@@ -188,7 +188,7 @@ async def get_positions():
             positions = response.json()
 
             # Get portfolio value for weight calculation
-            account_response = await client.get(
+            account_response = client.get(
                 f"{ALPACA_BASE}/v2/account",
                 headers=_auth_headers()
             )
@@ -225,12 +225,12 @@ async def get_positions():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/performance", response_model=PerformanceMetrics)
-async def get_performance():
+def get_performance():
     """Get portfolio performance metrics"""
     try:
-        async with httpx.AsyncClient() as client:
+        with httpx.Client() as client:
             # Get portfolio history for performance calculation
-            response = await client.get(
+            response = client.get(
                 f"{ALPACA_BASE}/v2/account/portfolio/history",
                 headers=_auth_headers(),
                 params={"period": "1M", "timeframe": "1D"}
@@ -335,7 +335,7 @@ async def get_performance():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/recommendations")
-async def get_ai_recommendations():
+def get_ai_recommendations():
     """Get AI-powered portfolio recommendations"""
     try:
         # This would integrate with the discovery system and Claude AI
@@ -362,27 +362,27 @@ async def get_ai_recommendations():
 
 # Frontend-expected endpoints with /portfolio prefix
 @app.get("/portfolio/health")
-async def portfolio_health():
+def portfolio_health():
     """Health check endpoint - frontend expects /portfolio/health"""
-    return await health()
+    return health()
 
 @app.get("/portfolio/summary")
-async def portfolio_summary():
+def portfolio_summary():
     """Portfolio summary - frontend expects /portfolio/summary"""
-    return await get_portfolio_summary()
+    return get_portfolio_summary()
 
 @app.get("/portfolio/positions")
-async def portfolio_positions():
+def portfolio_positions():
     """Portfolio positions - frontend expects /portfolio/positions"""
-    return await get_positions()
+    return get_positions()
 
 @app.get("/portfolio/recommendations")
-async def portfolio_recommendations():
+def portfolio_recommendations():
     """Portfolio recommendations - frontend expects /portfolio/recommendations"""
-    return await get_ai_recommendations()
+    return get_ai_recommendations()
 
 @app.get("/portfolio/alerts")
-async def portfolio_alerts():
+def portfolio_alerts():
     """Portfolio alerts - placeholder endpoint"""
     return {
         "alerts": [
