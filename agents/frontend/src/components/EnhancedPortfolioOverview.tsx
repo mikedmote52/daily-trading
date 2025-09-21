@@ -44,7 +44,7 @@ export const PortfolioOverview: React.FC<PortfolioOverviewProps> = ({ alpacaServ
 
   // Handle position closure
   const handleClosePosition = async (symbol: string) => {
-    if (!confirm(`Are you sure you want to close your ${symbol} position?`)) {
+    if (!window.confirm(`Are you sure you want to close your ${symbol} position?`)) {
       return;
     }
 

@@ -23,7 +23,7 @@ export class DiscoveryService {
       }
 
       const data = await response.json();
-      console.log(`✅ Discovery API returned ${data.length} stocks:`, data.map(s => s.symbol));
+      console.log(`✅ Discovery API returned ${data.length} stocks:`, data.map((s: any) => s.symbol));
 
       // Validate data structure
       if (!Array.isArray(data)) {
@@ -47,7 +47,7 @@ export class DiscoveryService {
         volume_score: parseFloat(stock.rvol || 1), // Use RVOL as volume score
         ai_score: Math.round(parseFloat(stock.score || 70)), // Use discovery score as AI score
         signals: [stock.reason || 'Discovery Signal'], // Use reason as signal
-        recommendation: 'BUY' // Discovery API only returns buy candidates
+        recommendation: 'BUY' as const // Discovery API only returns buy candidates
       }));
 
       console.log(`🎯 Transformed ${transformedData.length} stocks for frontend`);
@@ -238,7 +238,7 @@ export class DiscoveryService {
 
     } catch (error) {
       console.error('Failed to create WebSocket connection:', error);
-      onError(new Error(`WebSocket creation failed: ${error.message}`));
+      onError(new Error(`WebSocket creation failed: ${(error as any).message}`));
       return null;
     }
   }

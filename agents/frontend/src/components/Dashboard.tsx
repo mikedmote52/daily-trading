@@ -93,7 +93,7 @@ export const Dashboard: React.FC = () => {
           
           {activeTab === 'alerts' && (
             <div className="space-y-6">
-              <AlertsPanel />
+              <AlertsPanel alerts={[]} onAcknowledgeAlert={() => {}} />
             </div>
           )}
         </div>

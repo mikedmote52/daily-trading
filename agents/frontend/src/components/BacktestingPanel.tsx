@@ -255,9 +255,9 @@ export const BacktestingPanel: React.FC = () => {
                     }}
                     formatter={(value: number) => [`${value.toFixed(2)}%`, 'Monthly Return']}
                   />
-                  <Bar 
-                    dataKey="returns" 
-                    fill={(dataPoint: any) => dataPoint.returns >= 0 ? '#10B981' : '#EF4444'}
+                  <Bar
+                    dataKey="returns"
+                    fill="#10B981"
                     radius={[4, 4, 0, 0]}
                   />
                 </RechartsBarChart>

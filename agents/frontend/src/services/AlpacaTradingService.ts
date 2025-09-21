@@ -123,7 +123,7 @@ export class AlpacaTradingService {
 
     } catch (error) {
       console.error('Alpaca trading error:', error);
-      throw new Error(`Trading failed: ${error.message}`);
+      throw new Error(`Trading failed: ${(error as any).message}`);
     }
   }
 

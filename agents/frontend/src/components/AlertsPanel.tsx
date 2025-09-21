@@ -50,7 +50,7 @@ export const AlertsPanel: React.FC<AlertsPanelProps> = ({ alerts, onAcknowledgeA
   };
 
   const dismissAlert = (id: string) => {
-    dispatch({ type: 'REMOVE_ALERT', payload: id });
+    onAcknowledgeAlert(id);
   };
 
   const formatTime = (timestamp: string) => {
@@ -141,18 +141,18 @@ export const AlertsPanel: React.FC<AlertsPanelProps> = ({ alerts, onAcknowledgeA
                 <div className="flex items-start justify-between">
                   <div className="flex items-start space-x-3 flex-1">
                     <div className="flex-shrink-0 pt-0.5">
-                      {getAlertIcon(alert.type)}
+                      {getAlertIcon(alert.type, alert.severity || 'low')}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center space-x-2 mb-1">
-                        {alert.agent && (
+                        {(alert as any).agent && (
                           <span className="px-2 py-1 bg-gray-700 text-gray-300 text-xs rounded-full">
-                            {alert.agent}
+                            {(alert as any).agent}
                           </span>
                         )}
                         <span className="text-xs text-gray-400 flex items-center">
                           <Clock className="h-3 w-3 mr-1" />
-                          {formatTime(alert.timestamp)}
+                          {formatTime(alert.timestamp.toString())}
                         </span>
                       </div>
                       <p className="text-sm text-white leading-relaxed">{alert.message}</p>
@@ -188,19 +188,19 @@ export const AlertsPanel: React.FC<AlertsPanelProps> = ({ alerts, onAcknowledgeA
               <div key={alert.id} className="flex items-center space-x-4">
                 <div className="flex-shrink-0">
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center ${getAlertBgColor(alert.type)}`}>
-                    {getAlertIcon(alert.type)}
+                    {getAlertIcon(alert.type, alert.severity || 'low')}
                   </div>
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center space-x-2">
                     <p className="text-sm text-white truncate">{alert.message}</p>
-                    {alert.agent && (
+                    {(alert as any).agent && (
                       <span className="px-2 py-1 bg-gray-700 text-gray-300 text-xs rounded">
-                        {alert.agent}
+                        {(alert as any).agent}
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-gray-400 mt-1">{formatTime(alert.timestamp)}</p>
+                  <p className="text-xs text-gray-400 mt-1">{formatTime(alert.timestamp.toString())}</p>
                 </div>
                 {index < alerts.length - 1 && (
                   <div className="absolute left-4 mt-8 w-0.5 h-4 bg-gray-600" />

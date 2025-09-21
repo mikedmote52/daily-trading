@@ -64,7 +64,7 @@ export const ExplosiveStockDiscovery: React.FC<ExplosiveStockDiscoveryProps> = (
       refetch();
     } catch (error) {
       console.error('Trading error:', error);
-      alert(`Failed to place order for ${stockAnalysis.symbol}: ${error.message}`);
+      alert(`Failed to place order for ${stockAnalysis.symbol}: ${(error as any).message}`);
     } finally {
       setTradingInProgress(prev => {
         const newSet = new Set(prev);
@@ -87,7 +87,7 @@ export const ExplosiveStockDiscovery: React.FC<ExplosiveStockDiscoveryProps> = (
     return (
       <div className="bg-red-900 border border-red-500 rounded-lg p-6 text-center">
         <h3 className="text-xl font-bold text-red-300">Discovery System Error</h3>
-        <p className="text-red-200 mt-2">Failed to load stock recommendations: {error.message}</p>
+        <p className="text-red-200 mt-2">Failed to load stock recommendations: {(error as any).message}</p>
         <button
           onClick={() => refetch()}
           className="mt-4 bg-red-600 hover:bg-red-700 px-4 py-2 rounded"
