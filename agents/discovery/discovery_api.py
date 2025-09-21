@@ -104,13 +104,16 @@ async def run_discovery():
         logger.info(f"🔍 Starting discovery scan: {scan_id}")
 
         # Run discovery
-        results = discovery_system.run_discovery()
+        discovery_result = discovery_system.run_universal_discovery()
+
+        # Extract the actual results
+        candidates = discovery_result.get('results', [])
 
         # Cache results if Redis is available
         if redis_client:
             try:
-                redis_client.setex(f"discovery:latest", 300, json.dumps(results))
-                redis_client.setex(f"discovery:{scan_id}", 3600, json.dumps(results))
+                redis_client.setex(f"discovery:latest", 300, json.dumps(candidates))
+                redis_client.setex(f"discovery:{scan_id}", 3600, json.dumps(candidates))
             except Exception as e:
                 logger.warning(f"⚠️  Redis cache failed: {e}")
 
@@ -119,7 +122,7 @@ async def run_discovery():
         return {
             "scan_id": scan_id,
             "timestamp": datetime.now().isoformat(),
-            "candidates": results
+            "candidates": candidates
         }
 
     except Exception as e:
@@ -136,11 +139,14 @@ async def get_top_signals():
         logger.info("🚀 RUNNING REAL DISCOVERY PIPELINE")
 
         # Run discovery
-        results = discovery_system.run_discovery()
+        discovery_result = discovery_system.run_universal_discovery()
+
+        # Extract the actual results
+        candidates = discovery_result.get('results', [])
 
         # Format for frontend
         formatted_results = []
-        for candidate in results:
+        for candidate in candidates:
             formatted_results.append({
                 "symbol": candidate["symbol"],
                 "price": candidate["last_price"],
