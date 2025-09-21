@@ -112,14 +112,14 @@ services:
       - key: ENVIRONMENT
         value: production
 
-  # Frontend - React Trading UI (Fixed)
+  # Frontend - MCP-Enhanced Trading UI
   - type: static
-    name: alphastack-frontend-v2
+    name: alphastack-frontend-mcp
     repo: https://github.com/mikedmote52/daily-trading.git
-    rootDir: agents/frontend
-    # React Scripts build
-    buildCommand: chmod +x render-build.sh && ./render-build.sh
-    publishPath: build
+    rootDir: frontend
+    # Vite build system
+    buildCommand: npm install && npm run build
+    publishPath: dist
     autoDeploy: true
     envVars:
       - key: NODE_VERSION
@@ -127,10 +127,11 @@ services:
       - key: NPM_CONFIG_PRODUCTION
         value: "false"
       - key: VITE_ORDERS_API_URL
-        # set to your actual orders URL after first deploy if different
         value: "https://alphastack-orders.onrender.com"
       - key: VITE_DISCOVERY_API_URL
-        value: https://alphastack-discovery.onrender.com
+        value: "https://alphastack-discovery.onrender.com"
+      - key: VITE_MCP_DISCOVERY_URL
+        value: "https://alphastack-discovery.onrender.com"
     routes:
       - type: rewrite
         source: "/*"

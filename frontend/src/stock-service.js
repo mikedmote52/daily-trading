@@ -167,21 +167,21 @@ export function useExplosiveStocks() {
       try {
         setStocks(prev => ({ ...prev, loading: true, error: null }));
 
-        // Try MCP-enhanced backend first
+        // Try MCP-enhanced backend first (deployed discovery API)
         console.log('🔍 Fetching MCP-enhanced stock data...');
-        const response = await fetch('http://localhost:8081/stocks/explosive');
+        const discoveryUrl = import.meta.env.VITE_DISCOVERY_API_URL || 'https://alphastack-discovery.onrender.com';
+        const response = await fetch(`${discoveryUrl}/signals/top`);
 
         if (!response.ok) {
           throw new Error(`MCP backend error: ${response.status}`);
         }
 
-        const result = await response.json();
+        const stocks = await response.json();
 
-        if (result.error) {
-          throw new Error(result.error);
+        if (!Array.isArray(stocks)) {
+          throw new Error('Invalid response format from discovery API');
         }
 
-        const stocks = result.stocks || [];
         console.log(`✅ Received ${stocks.length} MCP-filtered stocks`);
 
         setStocks({ data: stocks, loading: false, error: null });
