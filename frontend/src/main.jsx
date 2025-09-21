@@ -2,8 +2,8 @@ import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { useExplosiveStocks } from "./stock-service.js";
 
-const ordersBase = "https://alphastack-orders.onrender.com";
-const portfolioBase = "https://alphastack-portfolio.onrender.com";
+const ordersBase = import.meta.env.VITE_ORDERS_API_URL || "https://alphastack-orders.onrender.com";
+const portfolioBase = import.meta.env.VITE_PORTFOLIO_API_URL || "https://alphastack-portfolio.onrender.com";
 
 function BuyButton({ symbol, price, onOrderPlaced }) {
   const [buying, setBuying] = useState(false);

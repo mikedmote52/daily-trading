@@ -132,6 +132,8 @@ services:
         value: "https://alphastack-discovery.onrender.com"
       - key: VITE_MCP_DISCOVERY_URL
         value: "https://alphastack-discovery.onrender.com"
+      - key: VITE_PORTFOLIO_API_URL
+        value: "https://alphastack-portfolio.onrender.com"
     routes:
       - type: rewrite
         source: "/*"
