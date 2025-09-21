@@ -52,8 +52,8 @@ ALPACA_SECRET = os.environ.get("ALPACA_SECRET", "")
 def _auth_headers():
     """Get Alpaca authentication headers"""
     return {
-        "APCA-API-KEY-ID": ALPACA_KEY,
-        "APCA-API-SECRET-KEY": ALPACA_SECRET,
+        "APCA-API-KEY-ID": ALPACA_KEY.strip(),
+        "APCA-API-SECRET-KEY": ALPACA_SECRET.strip(),
         "Content-Type": "application/json"
     }
 
@@ -389,6 +389,10 @@ def test_auth_endpoint():
         logger.info(f"ALPACA_KEY length: {len(ALPACA_KEY)}")
         logger.info(f"ALPACA_SECRET length: {len(ALPACA_SECRET)}")
 
+        # Show key/secret previews for debugging
+        key_preview = f"{ALPACA_KEY[:4]}...{ALPACA_KEY[-4:]}" if len(ALPACA_KEY) > 8 else ALPACA_KEY
+        secret_preview = f"{ALPACA_SECRET[:4]}...{ALPACA_SECRET[-4:]}" if len(ALPACA_SECRET) > 8 else ALPACA_SECRET
+
         # EXACT pattern from working orders service
         with httpx.Client(base_url=ALPACA_BASE, headers=_auth_headers(), timeout=10) as client:
             response = client.get("/v2/positions")
@@ -399,7 +403,11 @@ def test_auth_endpoint():
                 "alpaca_base": ALPACA_BASE,
                 "key_length": len(ALPACA_KEY),
                 "secret_length": len(ALPACA_SECRET),
-                "headers_sent": list(_auth_headers().keys())
+                "key_preview": key_preview,
+                "secret_preview": secret_preview,
+                "headers_sent": list(_auth_headers().keys()),
+                "key_has_whitespace": ALPACA_KEY != ALPACA_KEY.strip(),
+                "secret_has_whitespace": ALPACA_SECRET != ALPACA_SECRET.strip()
             }
 
     except Exception as e:
