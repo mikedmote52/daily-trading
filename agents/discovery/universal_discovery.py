@@ -19,7 +19,16 @@ import os
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('UniversalDiscovery')
 
-# Try to import Polygon API client for enhanced data access
+# Try to import MCP Polygon package for enhanced data access
+try:
+    import mcp_polygon
+    MCP_POLYGON_AVAILABLE = True
+    logger.info("✅ MCP Polygon package available")
+except ImportError:
+    MCP_POLYGON_AVAILABLE = False
+    logger.info("⚠️  MCP Polygon package not available")
+
+# Try to import Polygon API client as fallback
 try:
     from polygon import RESTClient
     POLYGON_CLIENT_AVAILABLE = True
@@ -101,7 +110,21 @@ def _call_mcp_function(func_name, *args, **kwargs):
         except:
             pass
 
-        # Method 3: Try Polygon API client
+        # Method 3: Try MCP Polygon package
+        if MCP_POLYGON_AVAILABLE:
+            try:
+                # Map MCP function names to mcp_polygon methods
+                method_name = func_name.replace('mcp__polygon__', '')
+                if hasattr(mcp_polygon, method_name):
+                    mcp_func = getattr(mcp_polygon, method_name)
+                    result = mcp_func(*args, **kwargs)
+                    logger.info(f"✅ Called {func_name} via MCP Polygon package")
+                    return result
+            except Exception as e:
+                logger.debug(f"MCP Polygon package call failed: {e}")
+                pass
+
+        # Method 4: Try Polygon API client
         if POLYGON_CLIENT_AVAILABLE and polygon_client:
             try:
                 # Map common MCP function names to polygon client methods

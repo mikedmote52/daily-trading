@@ -15,33 +15,18 @@ echo "🌐 Render: ${RENDER:-false}"
 if [ "$RENDER" = "true" ]; then
     echo "🔧 Checking MCP installation on Render..."
 
-    # Configure Polygon MCP if API key is available
+    # Check Polygon MCP availability
     if [ ! -z "$POLYGON_API_KEY" ]; then
-        echo "📡 Configuring Polygon MCP..."
+        echo "📡 Checking Polygon MCP package..."
 
-        # Install and configure Polygon MCP
-        if command -v claude &> /dev/null; then
-            echo "🔧 Installing Polygon MCP server..."
-            # Install the Polygon MCP server using uvx
-            python3 -m pip install --user uv || echo "⚠️  UV installation failed"
-
-            # Add to PATH
-            export PATH="$HOME/.local/bin:$PATH"
-
-            # Configure MCP
-            claude mcp add polygon -e POLYGON_API_KEY="$POLYGON_API_KEY" -- uvx --from git+https://github.com/polygon-io/mcp_polygon@v0.4.0 mcp_polygon &>/dev/null && echo "✅ Polygon MCP configured" || echo "⚠️  MCP configuration failed"
+        # Test if mcp_polygon package is available
+        if python3 -c "import mcp_polygon; print('✅ MCP Polygon package available')" 2>/dev/null; then
+            echo "✅ Polygon MCP package is available"
         else
-            echo "⚠️  Claude CLI not available - MCP configuration skipped"
+            echo "⚠️  Polygon MCP package not available - using HTTP fallback"
         fi
     else
-        echo "⚠️  No POLYGON_API_KEY - MCP configuration skipped"
-    fi
-
-    # Verify MCP status
-    if claude mcp list 2>/dev/null | grep -q polygon; then
-        echo "✅ Polygon MCP is available"
-    else
-        echo "⚠️  Polygon MCP not available - using HTTP fallback"
+        echo "⚠️  No POLYGON_API_KEY - MCP functionality disabled"
     fi
 fi
 
