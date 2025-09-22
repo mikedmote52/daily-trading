@@ -11,9 +11,9 @@ services:
       - key: POLYGON_API_KEY
         sync: false  # Set manually in Render dashboard
 
-      # Optional: Redis for caching
-      - key: REDIS_URL
-        value: redis://localhost:6379
+      # Optional: Redis for caching (leave unset for no Redis)
+      # - key: REDIS_URL
+      #   value: redis://localhost:6379
 
       # Optional: Port (Render provides this automatically)
       - key: PORT

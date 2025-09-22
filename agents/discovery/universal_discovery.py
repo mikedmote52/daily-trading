@@ -6,7 +6,6 @@ Full universe coverage with vectorized processing and zero misses
 import pandas as pd
 import numpy as np
 import requests
-import yfinance as yf
 import time
 import json
 import logging
@@ -53,11 +52,9 @@ def _test_mcp_availability():
         logger.debug(f"MCP detection error: {e}")
         return False
 
-MCP_AVAILABLE = _test_mcp_availability()
-if MCP_AVAILABLE:
-    logger.info("🎯 MCP Polygon functions detected - enhanced mode enabled")
-else:
-    logger.info("⚠️  MCP functions not available - using fallback HTTP mode")
+# Don't test at import time - check dynamically at runtime
+# MCP functions may not be available at import but could be available at runtime
+logger.info("🔄 MCP availability will be tested dynamically at runtime")
 
 def _call_mcp_function(func_name, *args, **kwargs):
     """Safely call MCP function with fallback handling for different environments"""
@@ -65,6 +62,7 @@ def _call_mcp_function(func_name, *args, **kwargs):
         # Method 1: Try globals (Claude Code environment)
         try:
             func = globals()[func_name]
+            logger.info(f"✅ Found {func_name} in globals() - using MCP")
             return func(*args, **kwargs)
         except KeyError:
             pass
@@ -72,6 +70,7 @@ def _call_mcp_function(func_name, *args, **kwargs):
         # Method 2: Try direct name lookup (Render deployment)
         try:
             func = eval(func_name)
+            logger.info(f"✅ Found {func_name} via eval() - using MCP")
             return func(*args, **kwargs)
         except NameError:
             pass
@@ -94,6 +93,7 @@ def _call_mcp_function(func_name, *args, **kwargs):
         except (AttributeError, ImportError):
             pass
 
+        logger.warning(f"⚠️  MCP function {func_name} not found - falling back to HTTP")
         raise ValueError(f"MCP function {func_name} not found in any namespace")
 
     except Exception as e:
@@ -151,7 +151,8 @@ class UniversalDiscoverySystem:
         self.FAIL_ON_MOCK_DATA = False  # Allow graceful fallback in production
 
         # MCP optimization - Use MCP functions when available
-        self.use_mcp = MCP_AVAILABLE
+        # MCP detection is now dynamic at runtime
+        self.use_mcp = False  # Will be set dynamically when MCP calls succeed
 
         # Short interest and ticker details caches for performance
         self.short_interest_cache = {}
@@ -355,8 +356,8 @@ class UniversalDiscoverySystem:
         # Calculate RVOL with conservative baseline
         rvol = max(1.0, current_volume / estimated_avg_volume)
 
-        # Cap at realistic maximum (10x is already very significant)
-        rvol = min(rvol, 10.0)
+        # Allow higher RVOL values for true diversity - cap at 50x instead of 10x
+        rvol = min(rvol, 50.0)
 
         logger.info(f"   📊 {symbol}: Current {current_volume:,} vs Est.Avg {estimated_avg_volume:,} = {rvol:.2f}x RVOL")
         return rvol
@@ -994,67 +995,69 @@ class UniversalDiscoverySystem:
         # Bucket 1: Volume Pattern (35%) - Reduced from 40% to make room for short squeeze
         rvol = df['rvol_sust'].fillna(1.0)
 
-        # Realistic volume scoring for actual RVOL values (1-50x range)
+        # Enhanced volume scoring with more granular differentiation
         volume_score = np.where(rvol >= 30, 100,     # 30x+ = Perfect (100) - Extreme surge
+                       np.where(rvol >= 25, 98,      # 25x+ = Near Perfect (98)
                        np.where(rvol >= 20, 95,      # 20x+ = Exceptional (95) - Very high
                        np.where(rvol >= 15, 90,      # 15x+ = Excellent (90) - High surge
+                       np.where(rvol >= 12, 87,      # 12x+ = Very Good Plus (87)
                        np.where(rvol >= 10, 85,      # 10x+ = Very Good (85) - Strong surge
+                       np.where(rvol >= 8, 82,       # 8x+ = Good Plus (82)
                        np.where(rvol >= 7, 80,       # 7x+ = Good (80) - Notable surge
+                       np.where(rvol >= 6, 77,       # 6x+ = Above Average Plus (77)
                        np.where(rvol >= 5, 75,       # 5x+ = Above Average (75) - Moderate surge
+                       np.where(rvol >= 4, 72,       # 4x+ = Average Plus (72)
                        np.where(rvol >= 3, 65,       # 3x+ = Average (65) - Mild surge
+                       np.where(rvol >= 2.5, 60,     # 2.5x+ = Below Average Plus (60)
                        np.where(rvol >= 2, 55,       # 2x+ = Below Average (55) - Slight increase
                        np.where(rvol >= 1.5, 45,     # 1.5x+ = Poor (45) - Minimal increase
-                       30)))))))))                   # <1.5x = Very Poor (30) - Below normal
+                       30)))))))))))))))             # <1.5x = Very Poor (30) - Below normal
 
         volume_consistency = np.clip(df['day_volume'] / 1000000 * 10, 0, 100)
         bucket_volume = (volume_score * 0.8 + volume_consistency * 0.2)  # Emphasize surge magnitude
 
-        # Bucket 2: Short Squeeze Potential (35%) - ENHANCED with real data
-        float_score = np.where(pd.isna(df['float_shares']), 30,  # Lower default for missing data
-                      np.where(df['float_shares'] < 20e6, 100,   # <20M = Tiny float (max score)
-                      np.where(df['float_shares'] < 50e6, 90,    # <50M = Small float
-                      np.where(df['float_shares'] < 100e6, 70,   # <100M = Medium float
-                      np.where(df['float_shares'] < 300e6, 40, 20)))))  # Large float = low score
+        # Bucket 2: Market Activity & Opportunity (35%) - ENHANCED to use available diverse data
+        # Since fundamental data is often missing, use market signals for diversity
 
-        # Initialize short interest columns if missing
-        if 'short_interest_pct' not in df.columns:
-            df['short_interest_pct'] = np.nan
+        # Price positioning score - based on actual price levels (creates diversity)
+        price_position_score = np.where(df['last'] <= 1, 95,     # Penny stocks often explosive
+                               np.where(df['last'] <= 5, 90,      # Very low price
+                               np.where(df['last'] <= 10, 80,     # Low price
+                               np.where(df['last'] <= 25, 70,     # Moderate price
+                               np.where(df['last'] <= 50, 60,     # Higher price
+                               np.where(df['last'] <= 100, 50,    # High price
+                               40))))))                           # Very high price
 
-        # Enhanced short interest scoring with real data
-        short_score = np.where(pd.isna(df['short_interest_pct']), 30,  # Lower default
-                      np.where(df['short_interest_pct'] >= 30, 100,    # 30%+ = Massive squeeze potential
-                      np.where(df['short_interest_pct'] >= 20, 95,     # 20%+ = High squeeze potential
-                      np.where(df['short_interest_pct'] >= 15, 85,     # 15%+ = Good squeeze potential
-                      np.where(df['short_interest_pct'] >= 10, 70,     # 10%+ = Moderate squeeze potential
-                      np.where(df['short_interest_pct'] >= 5, 50, 25))))))  # <5% = Low squeeze potential
+        # Volume magnitude score - based on actual daily volume (creates diversity)
+        volume_magnitude = df['day_volume'].fillna(0)
+        volume_mag_score = np.where(volume_magnitude >= 50e6, 100,    # 50M+ = Massive volume
+                          np.where(volume_magnitude >= 20e6, 95,      # 20M+ = Very high volume
+                          np.where(volume_magnitude >= 10e6, 85,      # 10M+ = High volume
+                          np.where(volume_magnitude >= 5e6, 75,       # 5M+ = Good volume
+                          np.where(volume_magnitude >= 2e6, 65,       # 2M+ = Decent volume
+                          np.where(volume_magnitude >= 1e6, 55,       # 1M+ = Fair volume
+                          np.where(volume_magnitude >= 500000, 45, 35)))))))  # <500K = Low volume
 
-        # Days to cover scoring (shorter = easier squeeze) - handle missing column
-        if 'days_to_cover' not in df.columns:
-            df['days_to_cover'] = np.nan
+        # Volatility opportunity score - based on percent change (creates diversity)
+        volatility_score = np.where(np.abs(df['percent_change']) >= 20, 100,  # 20%+ = Extreme volatility
+                          np.where(np.abs(df['percent_change']) >= 15, 95,     # 15%+ = Very high volatility
+                          np.where(np.abs(df['percent_change']) >= 10, 85,     # 10%+ = High volatility
+                          np.where(np.abs(df['percent_change']) >= 7, 75,      # 7%+ = Good volatility
+                          np.where(np.abs(df['percent_change']) >= 5, 65,      # 5%+ = Decent volatility
+                          np.where(np.abs(df['percent_change']) >= 3, 55,      # 3%+ = Fair volatility
+                          np.where(np.abs(df['percent_change']) >= 1, 45, 35)))))))  # <1% = Low volatility
 
-        dtc_score = np.where(pd.isna(df['days_to_cover']), 50,
-                    np.where(df['days_to_cover'] <= 1, 100,       # ≤1 day = Instant squeeze potential
-                    np.where(df['days_to_cover'] <= 2, 85,        # ≤2 days = High squeeze potential
-                    np.where(df['days_to_cover'] <= 3, 70,        # ≤3 days = Good squeeze potential
-                    np.where(df['days_to_cover'] <= 5, 50, 25))))) # >5 days = Low squeeze potential
+        # Combine market activity metrics for diversity
+        bucket_market_activity = (price_position_score * 0.3 +
+                                 volume_mag_score * 0.4 +
+                                 volatility_score * 0.3)
 
-        # Weighted short squeeze bucket
-        bucket_short_squeeze = (float_score * 0.4 + short_score * 0.4 + dtc_score * 0.2)
-
-        # Bucket 3: Options Activity (20%) - handle NaN values
-        iv_score = np.where(pd.isna(df['iv_percentile']), 50,
-                   np.where(df['iv_percentile'] >= 80, 100, 50))
-        oi_score = np.where(pd.isna(df['call_put_oi_ratio']), 50,
-                   np.clip(df['call_put_oi_ratio'] * 30, 0, 100))
-        bucket_options = (iv_score * 0.7 + oi_score * 0.3)
-        
-        # Bucket 4: Positioning (10%) - Enhanced with momentum
+        # Bucket 3: Technical Positioning (25%) - REAL DATA ONLY
+        # VWAP positioning - real data from Polygon
         vwap_score = np.where(pd.isna(df['last']) | pd.isna(df['vwap']), 50,
                      np.where(df['last'] > df['vwap'], 100, 0))
-        ema_score = np.where(pd.isna(df['ema9']) | pd.isna(df['ema20']), 50,
-                    np.where(df['ema9'] > df['ema20'], 100, 0))
 
-        # Add price momentum component for differentiation
+        # Price momentum - real data from Polygon (enhanced for diversity)
         momentum_score = np.where(df['percent_change'] >= 15, 100,  # 15%+ = Explosive
                          np.where(df['percent_change'] >= 10, 90,   # 10%+ = Very Strong
                          np.where(df['percent_change'] >= 7, 85,    # 7%+ = Strong
@@ -1062,16 +1065,44 @@ class UniversalDiscoverySystem:
                          np.where(df['percent_change'] >= 3, 75,    # 3%+ = Decent
                          np.where(df['percent_change'] >= 1, 65,    # 1%+ = Fair
                          np.where(df['percent_change'] >= 0, 50,    # 0%+ = Neutral
-                         30)))))))                                  # Negative = Poor
+                         np.where(df['percent_change'] >= -2, 40,   # -2%+ = Small decline
+                         np.where(df['percent_change'] >= -5, 30,   # -5%+ = Moderate decline
+                         20)))))))))                                # <-5% = Large decline
 
-        bucket_technical = (vwap_score * 0.3 + ema_score * 0.3 + momentum_score * 0.4)  # Weight momentum
-        
-        # ENHANCED weighted final accumulation score with short squeeze focus
+        # Intraday range - real data showing volatility/accumulation
+        if 'high' in df.columns and 'low' in df.columns:
+            day_range_pct = ((df['high'] - df['low']) / df['last'] * 100).fillna(0)
+            range_score = np.where(day_range_pct >= 15, 100,        # 15%+ = Extreme range
+                          np.where(day_range_pct >= 10, 90,         # 10%+ = High range
+                          np.where(day_range_pct >= 7, 80,          # 7%+ = Good range
+                          np.where(day_range_pct >= 5, 70,          # 5%+ = Decent range
+                          np.where(day_range_pct >= 3, 60,          # 3%+ = Fair range
+                          np.where(day_range_pct >= 2, 50,          # 2%+ = Low range
+                          40))))))                                  # <2% = Very low range
+        else:
+            # Fallback: use volatility from percent_change as proxy
+            range_score = np.abs(df['percent_change']) * 5  # Scale to 0-100 range
+            range_score = np.clip(range_score, 0, 100)
+
+        bucket_technical = (vwap_score * 0.4 + momentum_score * 0.4 + range_score * 0.2)
+
+        # Bucket 4: Volume Quality (5%) - Real transaction count diversity
+        # Higher transaction count indicates institutional interest
+        if 'transactions' in df.columns:
+            transaction_score = np.clip(df['transactions'] / 1000, 0, 100)  # Scale transactions
+        else:
+            # Fallback: derive from volume and price (higher price stocks need fewer transactions)
+            est_transactions = df['day_volume'] / (df['last'] * 100)  # Estimate transactions
+            transaction_score = np.clip(est_transactions / 50, 0, 100)
+
+        bucket_volume_quality = transaction_score
+
+        # ENHANCED weighted final accumulation score - REAL DATA ONLY
         df['accumulation_score'] = np.clip(
-            bucket_volume * 0.35 +           # Volume: 35% (reduced from 40%)
-            bucket_short_squeeze * 0.35 +    # Short Squeeze: 35% (NEW - major factor)
-            bucket_options * 0.20 +          # Options: 20% (same)
-            bucket_technical * 0.10,         # Technical: 10% (same)
+            bucket_volume * 0.45 +           # Volume Pattern: 45% (RVOL + volume consistency)
+            bucket_market_activity * 0.25 +  # Market Activity: 25% (price/volume/volatility)
+            bucket_technical * 0.25 +        # Technical: 25% (VWAP/momentum/range)
+            bucket_volume_quality * 0.05,    # Volume Quality: 5% (transaction depth)
             0, 100
         ).astype(int)
 
@@ -1079,25 +1110,36 @@ class UniversalDiscoverySystem:
         if len(df) > 0:
             df['bucket_scores'] = df.apply(lambda row: {
                 'volume_pattern': int(bucket_volume[row.name]) if row.name < len(bucket_volume) else 0,
-                'short_squeeze': int(bucket_short_squeeze[row.name]) if row.name < len(bucket_short_squeeze) else 0,
-                'options_activity': int(bucket_options[row.name]) if row.name < len(bucket_options) else 0,
-                'technical_setup': int(bucket_technical[row.name]) if row.name < len(bucket_technical) else 0
+                'market_activity': int(bucket_market_activity[row.name]) if row.name < len(bucket_market_activity) else 0,
+                'technical_setup': int(bucket_technical[row.name]) if row.name < len(bucket_technical) else 0,
+                'volume_quality': int(bucket_volume_quality[row.name]) if row.name < len(bucket_volume_quality) else 0
             }, axis=1)
 
-            # Add short squeeze details for transparency
-            df['squeeze_metrics'] = df.apply(lambda row: {
-                'short_interest_pct': float(row.get('short_interest_pct', 0)) if pd.notna(row.get('short_interest_pct')) else None,
-                'days_to_cover': float(row.get('days_to_cover', 0)) if pd.notna(row.get('days_to_cover')) else None,
-                'float_size_category': (
-                    'tiny' if row.get('float_shares', 0) < 20e6 else
-                    'small' if row.get('float_shares', 0) < 50e6 else
-                    'medium' if row.get('float_shares', 0) < 100e6 else
-                    'large'
-                ) if pd.notna(row.get('float_shares')) else 'unknown'
+            # Add market activity details for transparency
+            df['activity_metrics'] = df.apply(lambda row: {
+                'price_level': float(row.get('last', 0)) if pd.notna(row.get('last')) else None,
+                'volume_category': (
+                    'massive' if row.get('day_volume', 0) >= 50e6 else
+                    'very_high' if row.get('day_volume', 0) >= 20e6 else
+                    'high' if row.get('day_volume', 0) >= 10e6 else
+                    'good' if row.get('day_volume', 0) >= 5e6 else
+                    'decent' if row.get('day_volume', 0) >= 2e6 else
+                    'fair' if row.get('day_volume', 0) >= 1e6 else
+                    'low'
+                ) if pd.notna(row.get('day_volume')) else 'unknown',
+                'volatility_category': (
+                    'extreme' if abs(row.get('percent_change', 0)) >= 20 else
+                    'very_high' if abs(row.get('percent_change', 0)) >= 15 else
+                    'high' if abs(row.get('percent_change', 0)) >= 10 else
+                    'good' if abs(row.get('percent_change', 0)) >= 7 else
+                    'decent' if abs(row.get('percent_change', 0)) >= 5 else
+                    'fair' if abs(row.get('percent_change', 0)) >= 3 else
+                    'low'
+                ) if pd.notna(row.get('percent_change')) else 'unknown'
             }, axis=1)
         else:
             df['bucket_scores'] = None
-            df['squeeze_metrics'] = None
+            df['activity_metrics'] = None
         
         return df
     
