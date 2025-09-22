@@ -1,0 +1,57 @@
+# Render.com deployment configuration for Discovery API
+services:
+  - type: web
+    name: alphastack-discovery
+    env: python
+    plan: starter # or professional for production
+    buildCommand: pip install -r requirements.txt
+    startCommand: python3 discovery_api.py
+    envVars:
+      # Required: Polygon API Key
+      - key: POLYGON_API_KEY
+        sync: false  # Set manually in Render dashboard
+
+      # Optional: Redis for caching
+      - key: REDIS_URL
+        value: redis://localhost:6379
+
+      # Optional: Port (Render provides this automatically)
+      - key: PORT
+        value: 8000
+
+      # Optional: Discovery parameters
+      - key: DISCOVERY_CYCLE_SECONDS
+        value: 300
+
+      - key: TOP_N
+        value: 50
+
+      # Optional: Logging
+      - key: LOG_LEVEL
+        value: INFO
+
+      - key: LOG_TO_FILE
+        value: false
+
+    # Health check configuration
+    healthCheckPath: /health
+
+    # Auto-deploy from GitHub
+    autoDeploy: true
+
+    # Build configuration
+    buildFilter:
+      paths:
+        - agents/discovery/**
+      ignoredPaths:
+        - "*.md"
+        - "*.txt"
+        - "__pycache__/**"
+        - "*.pyc"
+
+# Additional notes:
+# 1. Set POLYGON_API_KEY in Render dashboard Environment section
+# 2. The enhanced MCP detection will work automatically when MCP functions are available
+# 3. System will gracefully fallback to HTTP API if MCP is not available
+# 4. Monitor /health endpoint for system status
+# 5. Monitor /metrics endpoint for performance metrics

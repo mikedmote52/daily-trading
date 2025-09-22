@@ -17,6 +17,9 @@ from contextlib import asynccontextmanager
 import time
 
 # Import the universal discovery system
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from universal_discovery import UniversalDiscoverySystem
 
 # Configure structured logging

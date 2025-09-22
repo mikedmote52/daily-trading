@@ -16,21 +16,89 @@ from dataclasses import dataclass
 import heapq
 import os
 
-# Try to import Polygon MCP if available for optimized API calls
-try:
-    # Check if running in Claude Code environment with MCP access
-    import subprocess
-    result = subprocess.run(['which', 'polygon'], capture_output=True, text=True)
-    if result.returncode == 0:
-        MCP_AVAILABLE = True
-    else:
-        MCP_AVAILABLE = False
-except Exception:
-    MCP_AVAILABLE = False
-
-# Configure logging
+# Configure logging first
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('UniversalDiscovery')
+
+# Robust MCP detection for multiple deployment environments
+def _test_mcp_availability():
+    """Test if MCP functions are available in current environment"""
+    try:
+        # Method 1: Check globals (works in Claude Code)
+        try:
+            globals()['mcp__polygon__get_snapshot_all']
+            return True
+        except (KeyError, NameError):
+            pass
+
+        # Method 2: Try direct function call (for Render deployment)
+        try:
+            # This will work if MCP functions are injected by the runtime
+            mcp__polygon__get_market_status
+            return True
+        except NameError:
+            pass
+
+        # Method 3: Check builtins (some deployment environments)
+        try:
+            import builtins
+            if hasattr(builtins, 'mcp__polygon__get_snapshot_all'):
+                return True
+        except:
+            pass
+
+        return False
+
+    except Exception as e:
+        logger.debug(f"MCP detection error: {e}")
+        return False
+
+MCP_AVAILABLE = _test_mcp_availability()
+if MCP_AVAILABLE:
+    logger.info("🎯 MCP Polygon functions detected - enhanced mode enabled")
+else:
+    logger.info("⚠️  MCP functions not available - using fallback HTTP mode")
+
+def _call_mcp_function(func_name, *args, **kwargs):
+    """Safely call MCP function with fallback handling for different environments"""
+    try:
+        # Method 1: Try globals (Claude Code environment)
+        try:
+            func = globals()[func_name]
+            return func(*args, **kwargs)
+        except KeyError:
+            pass
+
+        # Method 2: Try direct name lookup (Render deployment)
+        try:
+            func = eval(func_name)
+            return func(*args, **kwargs)
+        except NameError:
+            pass
+
+        # Method 4: Check if function is available as module-level variable
+        try:
+            import sys
+            current_module = sys.modules[__name__]
+            if hasattr(current_module, func_name):
+                func = getattr(current_module, func_name)
+                return func(*args, **kwargs)
+        except:
+            pass
+
+        # Method 3: Try builtins
+        try:
+            import builtins
+            func = getattr(builtins, func_name)
+            return func(*args, **kwargs)
+        except (AttributeError, ImportError):
+            pass
+
+        raise ValueError(f"MCP function {func_name} not found in any namespace")
+
+    except Exception as e:
+        logger.error(f"Failed to call MCP function {func_name}: {e}")
+        raise
 
 @dataclass
 class GateConfig:
@@ -82,13 +150,17 @@ class UniversalDiscoverySystem:
         self.REAL_DATA_ONLY = True
         self.FAIL_ON_MOCK_DATA = False  # Allow graceful fallback in production
 
-        # MCP optimization
+        # MCP optimization - Use MCP functions when available
         self.use_mcp = MCP_AVAILABLE
+
+        # Short interest and ticker details caches for performance
+        self.short_interest_cache = {}
+        self.ticker_details_cache = {}
 
         logger.warning("🚨 REAL DATA ONLY MODE ENABLED - System will FAIL if mock data is detected")
 
         if self.use_mcp:
-            logger.info("🚀 POLYGON MCP ENABLED - Using optimized API calls")
+            logger.info("🚀 POLYGON MCP ENABLED - Using MCP function calls for enhanced data")
         else:
             logger.info("⚠️  Using direct HTTP requests to Polygon API")
 
@@ -100,33 +172,38 @@ class UniversalDiscoverySystem:
         logger.info("   🚀 Using Polygon MCP for intelligent stock filtering...")
 
         try:
-            # Use Claude MCP system to filter stocks by criteria
-            # This runs in the Claude environment and leverages the Polygon MCP
-            import subprocess
+            if self.use_mcp:
+                # Use actual MCP function calls for enhanced data access
+                logger.info("   📡 Fetching data via MCP function calls...")
 
-            # Get market snapshot via MCP with filtering
-            logger.info("   📡 Fetching MCP-filtered stock data...")
+                # Get market snapshot using MCP function
+                snapshot_response = _call_mcp_function(
+                    'mcp__polygon__get_snapshot_all',
+                    market_type="stocks"
+                )
 
-            # Direct API call with our criteria built in
-            url = "https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers"
-            params = {'apikey': self.polygon_api_key}
-            response = requests.get(url, params=params, timeout=60)
+                if not snapshot_response or snapshot_response.get('status') != 'OK':
+                    logger.error(f"   ❌ MCP snapshot failed: {snapshot_response}")
+                    return pd.DataFrame()
 
-            if response.status_code != 200:
-                logger.error(f"   ❌ Snapshot API failed: {response.status_code}")
-                return pd.DataFrame()
+                tickers_data = snapshot_response.get('tickers', [])
+                logger.info(f"   ✅ Received {len(tickers_data)} stocks from MCP functions")
 
-            data = response.json()
-            # Handle both 'results' and 'tickers' response formats
-            if 'results' in data:
-                tickers_data = data['results']
-            elif 'tickers' in data:
-                tickers_data = data['tickers']
             else:
-                logger.error("   ❌ No results or tickers in snapshot response")
-                return pd.DataFrame()
+                # Fallback to direct API call only if MCP not available
+                logger.info("   📡 Fallback: Using direct HTTP request...")
 
-            logger.info(f"   ✅ Received {len(tickers_data)} stocks from MCP-enhanced API")
+                url = "https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers"
+                params = {'apikey': self.polygon_api_key}
+                response = requests.get(url, params=params, timeout=60)
+
+                if response.status_code != 200:
+                    logger.error(f"   ❌ Snapshot API failed: {response.status_code}")
+                    return pd.DataFrame()
+
+                data = response.json()
+                tickers_data = data.get('tickers', data.get('results', []))
+                logger.info(f"   ✅ Received {len(tickers_data)} stocks from HTTP API")
 
             all_data = []
             filtered_count = 0
@@ -786,14 +863,135 @@ class UniversalDiscoverySystem:
 
         return df
     
+    def enrich_with_short_interest(self, tickers: List[str]) -> Dict[str, Dict]:
+        """Get short interest data for candidate stocks using MCP"""
+        logger.info(f"   📊 Fetching short interest data for {len(tickers)} candidates...")
+        short_data = {}
+
+        if not self.use_mcp:
+            logger.warning("   ⚠️  Short interest requires MCP - skipping")
+            return short_data
+
+        for ticker in tickers:
+            # Check cache first
+            cache_key = f"short_{ticker}"
+            if cache_key in self.short_interest_cache:
+                cache_age = time.time() - self.short_interest_cache[cache_key]['timestamp']
+                if cache_age < 86400:  # 24 hour cache
+                    short_data[ticker] = self.short_interest_cache[cache_key]['data']
+                    continue
+
+            try:
+                # Get latest short interest from MCP
+                si_response = _call_mcp_function(
+                    'mcp__polygon__list_short_interest',
+                    ticker=ticker,
+                    limit=1  # Get most recent data only
+                )
+
+                if si_response.get('results') and len(si_response['results']) > 0:
+                    latest = si_response['results'][0]
+                    short_info = {
+                        'short_interest': latest['short_interest'],
+                        'days_to_cover': latest.get('days_to_cover', 0),
+                        'settlement_date': latest['settlement_date'],
+                        'avg_daily_volume': latest.get('avg_daily_volume', 0)
+                    }
+                    short_data[ticker] = short_info
+
+                    # Cache the result
+                    self.short_interest_cache[cache_key] = {
+                        'data': short_info,
+                        'timestamp': time.time()
+                    }
+
+            except Exception as e:
+                logger.debug(f"   No short data for {ticker}: {e}")
+                continue
+
+        logger.info(f"   ✅ Got short interest data for {len(short_data)} stocks")
+        return short_data
+
+    def enrich_with_ticker_details(self, tickers: List[str]) -> Dict[str, Dict]:
+        """Get ticker details for float calculation using MCP"""
+        logger.info(f"   📋 Fetching ticker details for {len(tickers)} candidates...")
+        details_data = {}
+
+        if not self.use_mcp:
+            logger.warning("   ⚠️  Ticker details require MCP - skipping")
+            return details_data
+
+        for ticker in tickers:
+            # Check cache first
+            cache_key = f"details_{ticker}"
+            if cache_key in self.ticker_details_cache:
+                cache_age = time.time() - self.ticker_details_cache[cache_key]['timestamp']
+                if cache_age < 3600:  # 1 hour cache
+                    details_data[ticker] = self.ticker_details_cache[cache_key]['data']
+                    continue
+
+            try:
+                # Get ticker details from MCP
+                details_response = _call_mcp_function(
+                    'mcp__polygon__get_ticker_details',
+                    ticker=ticker
+                )
+
+                if details_response.get('results'):
+                    details = details_response['results']
+                    detail_info = {
+                        'shares_outstanding': details.get('share_class_shares_outstanding', 0),
+                        'market_cap': details.get('market_cap', 0),
+                        'name': details.get('name', ''),
+                        'sector': details.get('sic_description', 'Unknown')
+                    }
+                    details_data[ticker] = detail_info
+
+                    # Cache the result
+                    self.ticker_details_cache[cache_key] = {
+                        'data': detail_info,
+                        'timestamp': time.time()
+                    }
+
+            except Exception as e:
+                logger.debug(f"   No details for {ticker}: {e}")
+                continue
+
+        logger.info(f"   ✅ Got details for {len(details_data)} stocks")
+        return details_data
+
     def calculate_accumulation_scores(self, df: pd.DataFrame) -> pd.DataFrame:
         """Calculate accumulation phase scores - find stocks BEFORE they explode"""
         logger.info(f"🔍 SCORING: Calculating pre-explosion accumulation scores...")
-        
+
         df = df.copy()
-        
-        # Accumulation scoring system - Enhanced volume differentiation
-        # Bucket 1: Volume Pattern (40%) - Proper scaling for massive surges
+
+        # Enrich with real short interest and ticker details data
+        if len(df) > 0:
+            tickers = df['symbol'].tolist()
+            short_data = self.enrich_with_short_interest(tickers)
+            details_data = self.enrich_with_ticker_details(tickers)
+
+            # Add real short interest data to dataframe
+            for idx, row in df.iterrows():
+                ticker = row['symbol']
+
+                # Add short interest data
+                if ticker in short_data and ticker in details_data:
+                    si = short_data[ticker]
+                    details = details_data[ticker]
+
+                    shares_outstanding = details.get('shares_outstanding', 0)
+                    if shares_outstanding > 0:
+                        short_pct = (si['short_interest'] / shares_outstanding) * 100
+                        df.at[idx, 'short_interest_pct'] = short_pct
+                        df.at[idx, 'days_to_cover'] = si.get('days_to_cover', 0)
+                        df.at[idx, 'float_shares'] = shares_outstanding
+                        df.at[idx, 'market_cap'] = details.get('market_cap', 0)
+                        df.at[idx, 'sector'] = details.get('sector', 'Unknown')
+
+        # Accumulation scoring system - Enhanced with real short squeeze data
+        # Bucket 1: Volume Pattern (35%) - Reduced from 40% to make room for short squeeze
         rvol = df['rvol_sust'].fillna(1.0)
 
         # Realistic volume scoring for actual RVOL values (1-50x range)
@@ -810,14 +1008,38 @@ class UniversalDiscoverySystem:
 
         volume_consistency = np.clip(df['day_volume'] / 1000000 * 10, 0, 100)
         bucket_volume = (volume_score * 0.8 + volume_consistency * 0.2)  # Emphasize surge magnitude
-        
-        # Bucket 2: Float & Technical Setup (30%) - handle NaN values
-        float_score = np.where(pd.isna(df['float_shares']), 50,
-                      np.where(df['float_shares'] < 50e6, 100,
-                      np.where(df['float_shares'] < 150e6, 75, 50)))
-        short_score = np.where(pd.isna(df['short_interest_pct']), 50,
-                      np.clip(df['short_interest_pct'] * 3, 0, 100))
-        bucket_float_short = (float_score * 0.5 + short_score * 0.5)
+
+        # Bucket 2: Short Squeeze Potential (35%) - ENHANCED with real data
+        float_score = np.where(pd.isna(df['float_shares']), 30,  # Lower default for missing data
+                      np.where(df['float_shares'] < 20e6, 100,   # <20M = Tiny float (max score)
+                      np.where(df['float_shares'] < 50e6, 90,    # <50M = Small float
+                      np.where(df['float_shares'] < 100e6, 70,   # <100M = Medium float
+                      np.where(df['float_shares'] < 300e6, 40, 20)))))  # Large float = low score
+
+        # Initialize short interest columns if missing
+        if 'short_interest_pct' not in df.columns:
+            df['short_interest_pct'] = np.nan
+
+        # Enhanced short interest scoring with real data
+        short_score = np.where(pd.isna(df['short_interest_pct']), 30,  # Lower default
+                      np.where(df['short_interest_pct'] >= 30, 100,    # 30%+ = Massive squeeze potential
+                      np.where(df['short_interest_pct'] >= 20, 95,     # 20%+ = High squeeze potential
+                      np.where(df['short_interest_pct'] >= 15, 85,     # 15%+ = Good squeeze potential
+                      np.where(df['short_interest_pct'] >= 10, 70,     # 10%+ = Moderate squeeze potential
+                      np.where(df['short_interest_pct'] >= 5, 50, 25))))))  # <5% = Low squeeze potential
+
+        # Days to cover scoring (shorter = easier squeeze) - handle missing column
+        if 'days_to_cover' not in df.columns:
+            df['days_to_cover'] = np.nan
+
+        dtc_score = np.where(pd.isna(df['days_to_cover']), 50,
+                    np.where(df['days_to_cover'] <= 1, 100,       # ≤1 day = Instant squeeze potential
+                    np.where(df['days_to_cover'] <= 2, 85,        # ≤2 days = High squeeze potential
+                    np.where(df['days_to_cover'] <= 3, 70,        # ≤3 days = Good squeeze potential
+                    np.where(df['days_to_cover'] <= 5, 50, 25))))) # >5 days = Low squeeze potential
+
+        # Weighted short squeeze bucket
+        bucket_short_squeeze = (float_score * 0.4 + short_score * 0.4 + dtc_score * 0.2)
 
         # Bucket 3: Options Activity (20%) - handle NaN values
         iv_score = np.where(pd.isna(df['iv_percentile']), 50,
@@ -844,25 +1066,38 @@ class UniversalDiscoverySystem:
 
         bucket_technical = (vwap_score * 0.3 + ema_score * 0.3 + momentum_score * 0.4)  # Weight momentum
         
-        # Weighted final accumulation score
+        # ENHANCED weighted final accumulation score with short squeeze focus
         df['accumulation_score'] = np.clip(
-            bucket_volume * 0.40 +
-            bucket_float_short * 0.30 +
-            bucket_options * 0.20 +
-            bucket_technical * 0.10,
+            bucket_volume * 0.35 +           # Volume: 35% (reduced from 40%)
+            bucket_short_squeeze * 0.35 +    # Short Squeeze: 35% (NEW - major factor)
+            bucket_options * 0.20 +          # Options: 20% (same)
+            bucket_technical * 0.10,         # Technical: 10% (same)
             0, 100
         ).astype(int)
-        
-        # Store bucket scores for accumulation detection (handle empty dataframe)
+
+        # Store enhanced bucket scores for accumulation detection
         if len(df) > 0:
             df['bucket_scores'] = df.apply(lambda row: {
                 'volume_pattern': int(bucket_volume[row.name]) if row.name < len(bucket_volume) else 0,
-                'float_short': int(bucket_float_short[row.name]) if row.name < len(bucket_float_short) else 0,
+                'short_squeeze': int(bucket_short_squeeze[row.name]) if row.name < len(bucket_short_squeeze) else 0,
                 'options_activity': int(bucket_options[row.name]) if row.name < len(bucket_options) else 0,
                 'technical_setup': int(bucket_technical[row.name]) if row.name < len(bucket_technical) else 0
             }, axis=1)
+
+            # Add short squeeze details for transparency
+            df['squeeze_metrics'] = df.apply(lambda row: {
+                'short_interest_pct': float(row.get('short_interest_pct', 0)) if pd.notna(row.get('short_interest_pct')) else None,
+                'days_to_cover': float(row.get('days_to_cover', 0)) if pd.notna(row.get('days_to_cover')) else None,
+                'float_size_category': (
+                    'tiny' if row.get('float_shares', 0) < 20e6 else
+                    'small' if row.get('float_shares', 0) < 50e6 else
+                    'medium' if row.get('float_shares', 0) < 100e6 else
+                    'large'
+                ) if pd.notna(row.get('float_shares')) else 'unknown'
+            }, axis=1)
         else:
             df['bucket_scores'] = None
+            df['squeeze_metrics'] = None
         
         return df
     
@@ -1137,7 +1372,7 @@ class UniversalDiscoverySystem:
             
         except Exception as e:
             logger.error(f"Discovery pipeline error: {e}")
-            return self._create_empty_result(start_time)
+            return self._create_empty_result(pipeline_start_time)
     
     def _create_result(self, candidates_df: pd.DataFrame, universe_df: pd.DataFrame, 
                       gate_a_df: pd.DataFrame, gate_b_df: pd.DataFrame, start_time: float) -> Dict[str, Any]:
