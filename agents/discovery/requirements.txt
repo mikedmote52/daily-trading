@@ -13,3 +13,6 @@ redis==5.0.1
 
 # Environment
 python-dotenv==1.0.0
+
+# Polygon MCP Server for enhanced data access
+mcp_polygon @ git+https://github.com/polygon-io/mcp_polygon@v0.4.0

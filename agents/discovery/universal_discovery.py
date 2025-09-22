@@ -19,6 +19,15 @@ import os
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('UniversalDiscovery')
 
+# Try to import MCP Polygon server for enhanced data access
+try:
+    import mcp_polygon
+    MCP_SERVER_AVAILABLE = True
+    logger.info("✅ MCP Polygon server package available")
+except ImportError:
+    MCP_SERVER_AVAILABLE = False
+    logger.info("⚠️  MCP Polygon server package not available")
+
 # Robust MCP detection for multiple deployment environments
 def _test_mcp_availability():
     """Test if MCP functions are available in current environment"""
@@ -85,7 +94,19 @@ def _call_mcp_function(func_name, *args, **kwargs):
         except:
             pass
 
-        # Method 3: Try builtins
+        # Method 3: Try MCP Polygon server
+        if MCP_SERVER_AVAILABLE:
+            try:
+                # Map MCP function names to mcp_polygon server methods
+                if hasattr(mcp_polygon, func_name.replace('mcp__polygon__', '')):
+                    server_func = getattr(mcp_polygon, func_name.replace('mcp__polygon__', ''))
+                    logger.info(f"✅ Found {func_name} in MCP server - using MCP")
+                    return server_func(*args, **kwargs)
+            except Exception as e:
+                logger.debug(f"MCP server call failed: {e}")
+                pass
+
+        # Method 4: Try builtins
         try:
             import builtins
             func = getattr(builtins, func_name)
