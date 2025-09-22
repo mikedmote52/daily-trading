@@ -4,10 +4,7 @@ services:
     name: alphastack-discovery
     env: python
     plan: starter # or professional for production
-    buildCommand: |
-      pip install -r requirements.txt &&
-      pip install git+https://github.com/polygon-io/mcp_polygon@v0.4.0 &&
-      chmod +x startup.sh
+    buildCommand: pip install -r requirements.txt && chmod +x startup.sh
     startCommand: ./startup.sh python3 discovery_api.py
     envVars:
       # Required: Polygon API Key

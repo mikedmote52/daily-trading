@@ -125,23 +125,26 @@ def _call_mcp_function(func_name, *args, **kwargs):
                 pass
 
         # Method 4: Try Polygon API client
-        if POLYGON_CLIENT_AVAILABLE and polygon_client:
+        if POLYGON_CLIENT_AVAILABLE and polygon_api_key:
             try:
+                # Initialize client each time to avoid scoping issues
+                client = RESTClient(polygon_api_key)
+
                 # Map common MCP function names to polygon client methods
                 method_name = func_name.replace('mcp__polygon__', '')
                 if method_name == 'get_market_status':
-                    result = polygon_client.get_market_status()
+                    result = client.get_market_status()
                     logger.info(f"✅ Called {func_name} via Polygon client")
                     return result
                 elif method_name == 'list_short_interest':
                     # For short interest, we need ticker parameter
                     if 'ticker' in kwargs:
-                        result = polygon_client.get_ticker_details(kwargs['ticker'])
+                        result = client.get_ticker_details(kwargs['ticker'])
                         logger.info(f"✅ Called {func_name} via Polygon client")
                         return result
                 elif method_name == 'get_ticker_details':
                     if 'ticker' in kwargs:
-                        result = polygon_client.get_ticker_details(kwargs['ticker'])
+                        result = client.get_ticker_details(kwargs['ticker'])
                         logger.info(f"✅ Called {func_name} via Polygon client")
                         return result
             except Exception as e:

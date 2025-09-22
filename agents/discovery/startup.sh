@@ -15,18 +15,18 @@ echo "🌐 Render: ${RENDER:-false}"
 if [ "$RENDER" = "true" ]; then
     echo "🔧 Checking MCP installation on Render..."
 
-    # Check Polygon MCP availability
+    # Check Polygon API client availability
     if [ ! -z "$POLYGON_API_KEY" ]; then
-        echo "📡 Checking Polygon MCP package..."
+        echo "📡 Checking Polygon API access..."
 
-        # Test if mcp_polygon package is available
-        if python3 -c "import mcp_polygon; print('✅ MCP Polygon package available')" 2>/dev/null; then
-            echo "✅ Polygon MCP package is available"
+        # Test if polygon API client is available
+        if python3 -c "from polygon import RESTClient; print('✅ Polygon API client available')" 2>/dev/null; then
+            echo "✅ Polygon API client is available - enhanced data access enabled"
         else
-            echo "⚠️  Polygon MCP package not available - using HTTP fallback"
+            echo "⚠️  Polygon API client not available - using basic HTTP fallback"
         fi
     else
-        echo "⚠️  No POLYGON_API_KEY - MCP functionality disabled"
+        echo "⚠️  No POLYGON_API_KEY - limited functionality"
     fi
 fi
 
