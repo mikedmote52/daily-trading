@@ -1,7 +1,7 @@
-# CORE DEPENDENCIES - TESTED AND VERIFIED
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-pydantic==2.5.0
+# CORE DEPENDENCIES - COMPATIBLE VERSIONS
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+pydantic==2.10.0
 
 # Data Processing - REQUIRED
 pandas==2.1.3
@@ -14,5 +14,5 @@ redis==5.0.1
 # Environment
 python-dotenv==1.0.0
 
-# Polygon MCP Server for enhanced data access
-mcp_polygon @ git+https://github.com/polygon-io/mcp_polygon@v0.4.0
+# Polygon API client only (no MCP server due to dependency conflicts)
+polygon-api-client==1.15.3

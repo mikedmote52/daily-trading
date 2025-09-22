@@ -19,14 +19,22 @@ import os
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('UniversalDiscovery')
 
-# Try to import MCP Polygon server for enhanced data access
+# Try to import Polygon API client for enhanced data access
 try:
-    import mcp_polygon
-    MCP_SERVER_AVAILABLE = True
-    logger.info("✅ MCP Polygon server package available")
+    from polygon import RESTClient
+    POLYGON_CLIENT_AVAILABLE = True
+    logger.info("✅ Polygon API client available")
+    # Initialize client if API key is available
+    polygon_api_key = os.getenv('POLYGON_API_KEY')
+    if polygon_api_key:
+        polygon_client = RESTClient(polygon_api_key)
+    else:
+        polygon_client = None
+        logger.info("⚠️  No POLYGON_API_KEY - client disabled")
 except ImportError:
-    MCP_SERVER_AVAILABLE = False
-    logger.info("⚠️  MCP Polygon server package not available")
+    POLYGON_CLIENT_AVAILABLE = False
+    polygon_client = None
+    logger.info("⚠️  Polygon API client not available")
 
 # Robust MCP detection for multiple deployment environments
 def _test_mcp_availability():
@@ -94,16 +102,28 @@ def _call_mcp_function(func_name, *args, **kwargs):
         except:
             pass
 
-        # Method 3: Try MCP Polygon server
-        if MCP_SERVER_AVAILABLE:
+        # Method 3: Try Polygon API client
+        if POLYGON_CLIENT_AVAILABLE and polygon_client:
             try:
-                # Map MCP function names to mcp_polygon server methods
-                if hasattr(mcp_polygon, func_name.replace('mcp__polygon__', '')):
-                    server_func = getattr(mcp_polygon, func_name.replace('mcp__polygon__', ''))
-                    logger.info(f"✅ Found {func_name} in MCP server - using MCP")
-                    return server_func(*args, **kwargs)
+                # Map common MCP function names to polygon client methods
+                method_name = func_name.replace('mcp__polygon__', '')
+                if method_name == 'get_market_status':
+                    result = polygon_client.get_market_status()
+                    logger.info(f"✅ Called {func_name} via Polygon client")
+                    return result
+                elif method_name == 'list_short_interest':
+                    # For short interest, we need ticker parameter
+                    if 'ticker' in kwargs:
+                        result = polygon_client.get_ticker_details(kwargs['ticker'])
+                        logger.info(f"✅ Called {func_name} via Polygon client")
+                        return result
+                elif method_name == 'get_ticker_details':
+                    if 'ticker' in kwargs:
+                        result = polygon_client.get_ticker_details(kwargs['ticker'])
+                        logger.info(f"✅ Called {func_name} via Polygon client")
+                        return result
             except Exception as e:
-                logger.debug(f"MCP server call failed: {e}")
+                logger.debug(f"Polygon client call failed: {e}")
                 pass
 
         # Method 4: Try builtins
