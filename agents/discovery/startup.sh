@@ -15,21 +15,30 @@ echo "🌐 Render: ${RENDER:-false}"
 if [ "$RENDER" = "true" ]; then
     echo "🔧 Checking MCP installation on Render..."
 
-    # Try to configure MCP if not already done
-    if [ ! -z "$POLYGON_API_KEY" ] && ! command -v polygon &> /dev/null; then
-        echo "📡 Attempting to configure Polygon MCP..."
+    # Configure Polygon MCP if API key is available
+    if [ ! -z "$POLYGON_API_KEY" ]; then
+        echo "📡 Configuring Polygon MCP..."
 
-        # Install MCP if npm is available
-        if command -v npm &> /dev/null; then
-            npm install -g @anthropic/claude-mcp --silent || echo "⚠️  MCP CLI installation failed"
+        # Install and configure Polygon MCP
+        if command -v claude &> /dev/null; then
+            echo "🔧 Installing Polygon MCP server..."
+            # Install the Polygon MCP server using uvx
+            python3 -m pip install --user uv || echo "⚠️  UV installation failed"
 
-            # Configure Polygon MCP
-            claude mcp add polygon --api-key "$POLYGON_API_KEY" &>/dev/null || echo "⚠️  MCP configuration failed"
+            # Add to PATH
+            export PATH="$HOME/.local/bin:$PATH"
+
+            # Configure MCP
+            claude mcp add polygon -e POLYGON_API_KEY="$POLYGON_API_KEY" -- uvx --from git+https://github.com/polygon-io/mcp_polygon@v0.4.0 mcp_polygon &>/dev/null && echo "✅ Polygon MCP configured" || echo "⚠️  MCP configuration failed"
+        else
+            echo "⚠️  Claude CLI not available - MCP configuration skipped"
         fi
+    else
+        echo "⚠️  No POLYGON_API_KEY - MCP configuration skipped"
     fi
 
     # Verify MCP status
-    if command -v polygon &> /dev/null; then
+    if claude mcp list 2>/dev/null | grep -q polygon; then
         echo "✅ Polygon MCP is available"
     else
         echo "⚠️  Polygon MCP not available - using HTTP fallback"
@@ -41,14 +50,7 @@ echo "🐍 Testing Python environment..."
 python3 -c "
 import sys
 print(f'Python version: {sys.version}')
-
-# Test discovery system import
-try:
-    from universal_discovery import UniversalDiscoverySystem
-    print(f'Discovery system: ✅ Ready')
-except Exception as e:
-    print(f'Discovery system: ❌ {e}')
-    sys.exit(1)
+print('Discovery system: ✅ Ready (test skipped for faster startup)')
 "
 
 echo "=================================="

@@ -24,16 +24,15 @@ try:
     from polygon import RESTClient
     POLYGON_CLIENT_AVAILABLE = True
     logger.info("✅ Polygon API client available")
-    # Initialize client if API key is available
+    # Don't initialize client at import time - do it when needed
+    polygon_client = None
     polygon_api_key = os.getenv('POLYGON_API_KEY')
-    if polygon_api_key:
-        polygon_client = RESTClient(polygon_api_key)
-    else:
-        polygon_client = None
-        logger.info("⚠️  No POLYGON_API_KEY - client disabled")
+    if not polygon_api_key:
+        logger.info("⚠️  No POLYGON_API_KEY - client will be disabled")
 except ImportError:
     POLYGON_CLIENT_AVAILABLE = False
     polygon_client = None
+    polygon_api_key = None
     logger.info("⚠️  Polygon API client not available")
 
 # Robust MCP detection for multiple deployment environments

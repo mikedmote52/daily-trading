@@ -14,5 +14,5 @@ redis==5.0.1
 # Environment
 python-dotenv==1.0.0
 
-# Polygon API client only (no MCP server due to dependency conflicts)
+# Polygon API client for enhanced data access
 polygon-api-client==1.15.3
