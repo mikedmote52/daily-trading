@@ -44,9 +44,8 @@ print(f'Python version: {sys.version}')
 
 # Test discovery system import
 try:
-    from universal_discovery import UniversalDiscoverySystem, MCP_AVAILABLE
+    from universal_discovery import UniversalDiscoverySystem
     print(f'Discovery system: ✅ Ready')
-    print(f'MCP Available: {MCP_AVAILABLE}')
 except Exception as e:
     print(f'Discovery system: ❌ {e}')
     sys.exit(1)
