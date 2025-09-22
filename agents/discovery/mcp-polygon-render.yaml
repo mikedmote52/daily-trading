@@ -30,9 +30,8 @@ services:
       - key: FASTMCP_HOST
         value: 0.0.0.0
 
-      # Required: Use Render's assigned port
-      - key: FASTMCP_PORT
-        value: ${PORT}
+      # Let MCP server use Render's PORT environment variable automatically
+      # No FASTMCP_PORT needed - will use PORT from Render
 
     # Health check on root endpoint
     healthCheckPath: /

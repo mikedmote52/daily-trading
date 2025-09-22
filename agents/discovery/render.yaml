@@ -33,9 +33,9 @@ services:
       - key: LOG_TO_FILE
         value: false
 
-      # Optional: MCP Polygon HTTP server URL (if deployed separately)
-      # - key: MCP_POLYGON_URL
-      #   value: https://polygon-mcp-server.onrender.com/mcp
+      # Required: MCP Polygon HTTP server URL for enhanced data access
+      - key: MCP_POLYGON_URL
+        value: https://polygon-mcp-server.onrender.com/mcp
 
     # Health check configuration
     healthCheckPath: /health

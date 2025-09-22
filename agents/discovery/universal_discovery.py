@@ -86,6 +86,44 @@ def _test_mcp_availability():
         return False
 
 # MCP Server Management
+class HttpMcpClient:
+    """Simple HTTP client for MCP server communication"""
+    def __init__(self, server_url):
+        self.server_url = server_url
+
+    async def call_function(self, function_name, **kwargs):
+        """Call MCP function via HTTP using FastMCP protocol"""
+        import aiohttp
+        import json
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                # FastMCP uses a different protocol - direct function calls via HTTP POST
+                # The MCP server translates function names to Polygon API calls
+                payload = {
+                    "method": function_name,
+                    "params": kwargs
+                }
+
+                # Try the MCP endpoint
+                async with session.post(
+                    self.server_url,
+                    json=payload,
+                    headers={"Content-Type": "application/json"},
+                    timeout=aiohttp.ClientTimeout(total=30)
+                ) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        logger.debug(f"MCP call {function_name} succeeded")
+                        return result
+                    else:
+                        text = await response.text()
+                        logger.warning(f"MCP call failed: {response.status} - {text[:200]}")
+                        return None
+        except Exception as e:
+            logger.debug(f"HTTP MCP call failed for {function_name}: {e}")
+            return None
+
 class MCPPolygonManager:
     """Manages MCP Polygon HTTP client connection"""
 
@@ -108,13 +146,15 @@ class MCPPolygonManager:
             # Test if MCP server is accessible
             async with aiohttp.ClientSession() as session:
                 # Test root endpoint first
-                async with session.get(self.mcp_server_url.replace('/mcp', '/')) as response:
-                    if response.status == 200:
+                test_url = self.mcp_server_url.replace('/mcp', '')
+                async with session.get(test_url, timeout=aiohttp.ClientTimeout(total=5)) as response:
+                    if response.status in [200, 404]:  # 404 is OK - server is running but root path not found
                         logger.info(f"✅ MCP server accessible at {self.mcp_server_url}")
 
-                        # TODO: Initialize HTTP MCP client here
-                        # For now, we'll use the Polygon API client fallback
-                        return False  # Force fallback to direct API calls
+                        # Initialize HTTP MCP client
+                        self.mcp_client = HttpMcpClient(self.mcp_server_url)
+                        logger.info("✅ HTTP MCP client initialized")
+                        return True
                     else:
                         logger.warning(f"MCP server not accessible: {response.status}")
                         return False
@@ -159,7 +199,11 @@ class MCPPolygonManager:
             raise Exception("MCP client not connected")
 
         try:
-            result = await self.mcp_client.call_tool(tool_name, kwargs)
+            # Use call_function for HttpMcpClient
+            if isinstance(self.mcp_client, HttpMcpClient):
+                result = await self.mcp_client.call_function(tool_name, **kwargs)
+            else:
+                result = await self.mcp_client.call_tool(tool_name, kwargs)
             return result
         except Exception as e:
             logger.error(f"MCP tool call failed: {e}")
@@ -172,8 +216,8 @@ class MCPPolygonManager:
             self.server_process = None
             self.mcp_client = None
 
-# Global MCP manager
-mcp_manager = MCPPolygonManager() if MCP_FRAMEWORK_AVAILABLE else None
+# Global MCP manager - Always create for HTTP MCP support
+mcp_manager = MCPPolygonManager()  # Works with HTTP MCP server even without local framework
 
 # Don't test at import time - check dynamically at runtime
 logger.info("🔄 MCP availability will be tested dynamically at runtime")
