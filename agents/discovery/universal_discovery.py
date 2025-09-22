@@ -19,7 +19,19 @@ import os
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('UniversalDiscovery')
 
-# Try to import MCP Polygon package for enhanced data access
+# Try to import MCP framework and Polygon server
+try:
+    import subprocess
+    import asyncio
+    from mcp import Client
+    from mcp.client.stdio import stdio_client
+    MCP_FRAMEWORK_AVAILABLE = True
+    logger.info("✅ MCP framework available")
+except ImportError:
+    MCP_FRAMEWORK_AVAILABLE = False
+    logger.info("⚠️  MCP framework not available")
+
+# Try to import MCP Polygon package
 try:
     import mcp_polygon
     MCP_POLYGON_AVAILABLE = True
@@ -77,8 +89,72 @@ def _test_mcp_availability():
         logger.debug(f"MCP detection error: {e}")
         return False
 
+# MCP Server Management
+class MCPPolygonManager:
+    """Manages MCP Polygon server process and client connection"""
+
+    def __init__(self):
+        self.server_process = None
+        self.mcp_client = None
+        self.api_key = os.getenv('POLYGON_API_KEY')
+
+    async def start_server(self):
+        """Start MCP Polygon server process"""
+        if not self.api_key:
+            logger.warning("No POLYGON_API_KEY - cannot start MCP server")
+            return False
+
+        try:
+            # Start MCP server as subprocess
+            cmd = ["python", "-m", "mcp_polygon"]
+            env = os.environ.copy()
+            env['POLYGON_API_KEY'] = self.api_key
+
+            self.server_process = subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+                text=True
+            )
+
+            # Connect client to server
+            self.mcp_client = await stdio_client(
+                self.server_process.stdin,
+                self.server_process.stdout
+            )
+
+            logger.info("✅ MCP Polygon server started and connected")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to start MCP server: {e}")
+            return False
+
+    async def call_tool(self, tool_name, **kwargs):
+        """Call MCP tool with parameters"""
+        if not self.mcp_client:
+            raise Exception("MCP client not connected")
+
+        try:
+            result = await self.mcp_client.call_tool(tool_name, kwargs)
+            return result
+        except Exception as e:
+            logger.error(f"MCP tool call failed: {e}")
+            raise
+
+    def stop_server(self):
+        """Stop MCP server process"""
+        if self.server_process:
+            self.server_process.terminate()
+            self.server_process = None
+            self.mcp_client = None
+
+# Global MCP manager
+mcp_manager = MCPPolygonManager() if MCP_FRAMEWORK_AVAILABLE else None
+
 # Don't test at import time - check dynamically at runtime
-# MCP functions may not be available at import but could be available at runtime
 logger.info("🔄 MCP availability will be tested dynamically at runtime")
 
 def _call_mcp_function(func_name, *args, **kwargs):
@@ -110,7 +186,38 @@ def _call_mcp_function(func_name, *args, **kwargs):
         except:
             pass
 
-        # Method 3: Try MCP Polygon package
+        # Method 3: Try MCP Server
+        if mcp_manager and mcp_manager.mcp_client:
+            try:
+                # Map function names to MCP tool names
+                tool_mapping = {
+                    'mcp__polygon__get_snapshot_all': 'get_snapshot_all',
+                    'mcp__polygon__get_snapshot_ticker': 'get_snapshot_ticker',
+                    'mcp__polygon__list_short_interest': 'list_short_interest',
+                    'mcp__polygon__get_ticker_details': 'get_ticker_details',
+                    'mcp__polygon__get_market_status': 'get_market_status',
+                    'mcp__polygon__get_aggs': 'get_aggs',
+                    'mcp__polygon__list_trades': 'list_trades'
+                }
+
+                tool_name = tool_mapping.get(func_name)
+                if tool_name:
+                    # Call MCP tool asynchronously
+                    import asyncio
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    result = loop.run_until_complete(
+                        mcp_manager.call_tool(tool_name, **kwargs)
+                    )
+                    loop.close()
+
+                    logger.info(f"✅ Called {func_name} via MCP server")
+                    return result
+            except Exception as e:
+                logger.debug(f"MCP server call failed: {e}")
+                pass
+
+        # Method 4: Try MCP Polygon package
         if MCP_POLYGON_AVAILABLE:
             try:
                 # Map MCP function names to mcp_polygon methods
@@ -124,7 +231,7 @@ def _call_mcp_function(func_name, *args, **kwargs):
                 logger.debug(f"MCP Polygon package call failed: {e}")
                 pass
 
-        # Method 4: Try Polygon API client
+        # Method 5: Try Polygon API client
         if POLYGON_CLIENT_AVAILABLE and polygon_api_key:
             try:
                 # Initialize client each time to avoid scoping issues
@@ -217,12 +324,34 @@ class UniversalDiscoverySystem:
         self.FAIL_ON_MOCK_DATA = False  # Allow graceful fallback in production
 
         # MCP optimization - Use MCP functions when available
-        # MCP detection is now dynamic at runtime
+        # Initialize MCP server if available
         self.use_mcp = False  # Will be set dynamically when MCP calls succeed
+        self._initialize_mcp_server()
 
         # Short interest and ticker details caches for performance
         self.short_interest_cache = {}
         self.ticker_details_cache = {}
+
+    def _initialize_mcp_server(self):
+        """Initialize MCP server if available"""
+        if mcp_manager:
+            try:
+                import asyncio
+                # Try to start MCP server
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                server_started = loop.run_until_complete(mcp_manager.start_server())
+                loop.close()
+
+                if server_started:
+                    self.use_mcp = True
+                    logger.info("✅ MCP server initialized - enhanced mode enabled")
+                else:
+                    logger.info("⚠️  MCP server failed to start - using fallback")
+            except Exception as e:
+                logger.debug(f"MCP server initialization failed: {e}")
+        else:
+            logger.info("⚠️  MCP manager not available")
 
         logger.warning("🚨 REAL DATA ONLY MODE ENABLED - System will FAIL if mock data is detected")
 
