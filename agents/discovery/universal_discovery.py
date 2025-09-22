@@ -19,17 +19,13 @@ import os
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('UniversalDiscovery')
 
-# Try to import MCP framework and Polygon server
-try:
-    import subprocess
-    import asyncio
-    from mcp import Client
-    from mcp.client.stdio import stdio_client
-    MCP_FRAMEWORK_AVAILABLE = True
-    logger.info("✅ MCP framework available")
-except ImportError:
-    MCP_FRAMEWORK_AVAILABLE = False
-    logger.info("⚠️  MCP framework not available")
+# Import standard libraries for process management
+import subprocess
+import asyncio
+
+# MCP framework disabled due to Pydantic conflicts
+MCP_FRAMEWORK_AVAILABLE = False
+logger.info("⚠️  MCP framework disabled - Pydantic conflict")
 
 # Try to import MCP Polygon package
 try:

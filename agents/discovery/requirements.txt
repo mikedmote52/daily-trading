@@ -17,9 +17,6 @@ python-dotenv==1.0.0
 # Polygon API client for enhanced data access
 polygon-api-client==1.15.3
 
-# MCP framework with compatible version
-mcp==1.9.3
-# MCP Polygon server for enhanced data access
-git+https://github.com/polygon-io/mcp_polygon@v0.4.0
+# MCP disabled due to Pydantic conflicts - using Polygon client instead
 
 # Enhanced Polygon API access optimized for discovery
