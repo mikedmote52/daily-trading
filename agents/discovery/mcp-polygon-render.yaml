@@ -1,0 +1,47 @@
+# Render configuration for Polygon MCP HTTP Server
+services:
+  - type: web
+    name: polygon-mcp-server
+    env: python
+    plan: starter
+
+    # Build from Polygon MCP repository
+    repo: https://github.com/polygon-io/mcp_polygon
+
+    # Build commands - install uv and dependencies
+    buildCommand: |
+      pip install uv &&
+      uv pip install --system -e .
+
+    # Start MCP server in HTTP mode
+    startCommand: uv run entrypoint.py
+
+    # Environment variables for HTTP transport
+    envVars:
+      # Required: Polygon API key
+      - key: POLYGON_API_KEY
+        sync: false  # Set manually in Render dashboard
+
+      # Required: Use HTTP transport instead of STDIO
+      - key: MCP_TRANSPORT
+        value: streamable-http
+
+      # Required: Bind to all interfaces
+      - key: FASTMCP_HOST
+        value: 0.0.0.0
+
+      # Required: Use Render's assigned port
+      - key: FASTMCP_PORT
+        value: ${PORT}
+
+    # Health check on root endpoint
+    healthCheckPath: /
+
+    # Auto-deploy when MCP server updates
+    autoDeploy: true
+
+# Notes:
+# 1. After deployment, MCP endpoint will be at: https://polygon-mcp-server.onrender.com/mcp
+# 2. Set POLYGON_API_KEY in Render dashboard Environment section
+# 3. Test with: curl https://polygon-mcp-server.onrender.com/
+# 4. Discovery service will connect via HTTP instead of STDIO

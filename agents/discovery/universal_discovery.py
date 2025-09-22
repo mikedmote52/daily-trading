@@ -87,19 +87,44 @@ def _test_mcp_availability():
 
 # MCP Server Management
 class MCPPolygonManager:
-    """Manages MCP Polygon server process and client connection"""
+    """Manages MCP Polygon HTTP client connection"""
 
     def __init__(self):
-        self.server_process = None
         self.mcp_client = None
         self.api_key = os.getenv('POLYGON_API_KEY')
+        # Check for HTTP MCP server URL (for Render deployment)
+        self.mcp_server_url = os.getenv('MCP_POLYGON_URL', 'https://polygon-mcp-server.onrender.com/mcp')
 
     async def start_server(self):
-        """Start MCP Polygon server process"""
+        """Connect to HTTP MCP server (no need to start local process)"""
         if not self.api_key:
-            logger.warning("No POLYGON_API_KEY - cannot start MCP server")
+            logger.warning("No POLYGON_API_KEY - cannot connect to MCP server")
             return False
 
+        try:
+            # Try to connect to HTTP MCP server instead of local STDIO
+            import aiohttp
+
+            # Test if MCP server is accessible
+            async with aiohttp.ClientSession() as session:
+                # Test root endpoint first
+                async with session.get(self.mcp_server_url.replace('/mcp', '/')) as response:
+                    if response.status == 200:
+                        logger.info(f"✅ MCP server accessible at {self.mcp_server_url}")
+
+                        # TODO: Initialize HTTP MCP client here
+                        # For now, we'll use the Polygon API client fallback
+                        return False  # Force fallback to direct API calls
+                    else:
+                        logger.warning(f"MCP server not accessible: {response.status}")
+                        return False
+        except Exception as e:
+            logger.debug(f"MCP HTTP connection failed: {e}")
+            return False
+
+    async def start_server_stdio_legacy(self):
+        """Legacy STDIO server start (disabled for Render)"""
+        # This was the old approach - keeping for reference
         try:
             # Start MCP server as subprocess
             cmd = ["python", "-m", "mcp_polygon"]
@@ -117,9 +142,9 @@ class MCPPolygonManager:
 
             # Connect client to server
             self.mcp_client = await stdio_client(
-                self.server_process.stdin,
-                self.server_process.stdout
-            )
+                    self.server_process.stdin,
+                    self.server_process.stdout
+                )
 
             logger.info("✅ MCP Polygon server started and connected")
             return True
@@ -1056,13 +1081,11 @@ class UniversalDiscoverySystem:
         return df
     
     def enrich_with_short_interest(self, tickers: List[str]) -> Dict[str, Dict]:
-        """Get short interest data for candidate stocks using MCP"""
+        """Get short interest data for candidate stocks using MCP or Polygon API"""
         logger.info(f"   📊 Fetching short interest data for {len(tickers)} candidates...")
         short_data = {}
 
-        if not self.use_mcp:
-            logger.warning("   ⚠️  Short interest requires MCP - skipping")
-            return short_data
+        # Try MCP first, then fall back to Polygon API client when available
 
         for ticker in tickers:
             # Check cache first
@@ -1074,34 +1097,76 @@ class UniversalDiscoverySystem:
                     continue
 
             try:
-                # Get latest short interest from MCP
-                si_response = _call_mcp_function(
-                    'mcp__polygon__list_short_interest',
-                    ticker=ticker,
-                    limit=1  # Get most recent data only
-                )
+                # Try MCP first if available
+                if self.use_mcp:
+                    si_response = _call_mcp_function(
+                        'mcp__polygon__list_short_interest',
+                        ticker=ticker,
+                        limit=1
+                    )
 
-                if si_response.get('results') and len(si_response['results']) > 0:
-                    latest = si_response['results'][0]
-                    short_info = {
-                        'short_interest': latest['short_interest'],
-                        'days_to_cover': latest.get('days_to_cover', 0),
-                        'settlement_date': latest['settlement_date'],
-                        'avg_daily_volume': latest.get('avg_daily_volume', 0)
-                    }
-                    short_data[ticker] = short_info
+                    if si_response.get('results') and len(si_response['results']) > 0:
+                        latest = si_response['results'][0]
+                        short_info = {
+                            'short_interest': latest['short_interest'],
+                            'days_to_cover': latest.get('days_to_cover', 0),
+                            'settlement_date': latest['settlement_date'],
+                            'avg_daily_volume': latest.get('avg_daily_volume', 0)
+                        }
+                        short_data[ticker] = short_info
+                        self.short_interest_cache[cache_key] = {
+                            'data': short_info,
+                            'timestamp': time.time()
+                        }
+                        continue
 
-                    # Cache the result
-                    self.short_interest_cache[cache_key] = {
-                        'data': short_info,
-                        'timestamp': time.time()
-                    }
+                # Fallback to Polygon API client for short interest
+                elif POLYGON_CLIENT_AVAILABLE:
+                    logger.debug(f"   📡 Using Polygon client for {ticker} short interest...")
+                    try:
+                        # Initialize client if not already done
+                        if polygon_client is None:
+                            from polygon import RESTClient
+                            client = RESTClient(polygon_api_key)
+                        else:
+                            client = polygon_client
+
+                        # Get short interest data using Polygon client (returns generator)
+                        short_response = client.list_short_interest(
+                            ticker=ticker,
+                            limit=1
+                        )
+
+                        # Convert generator to list and get first result
+                        short_results = list(short_response)
+                        if short_results:
+                            latest = short_results[0]
+                            short_info = {
+                                'short_interest': getattr(latest, 'short_interest', 0),
+                                'settlement_date': getattr(latest, 'settlement_date', ''),
+                                'short_interest_pct': getattr(latest, 'short_interest_pct', 0)
+                            }
+                            short_data[ticker] = short_info
+                            # Cache the result
+                            self.short_interest_cache[cache_key] = {
+                                'data': short_info,
+                                'timestamp': time.time()
+                            }
+                            logger.debug(f"   ✅ Polygon client short interest for {ticker}: {short_info.get('short_interest_pct', 0):.1f}%")
+                            continue
+                        else:
+                            logger.debug(f"   ⚠️  No short interest data for {ticker}")
+                    except Exception as polygon_error:
+                        logger.debug(f"   ❌ Polygon client error for {ticker}: {polygon_error}")
+
+                else:
+                    logger.debug(f"   ⚠️  No data source available for {ticker} short interest")
 
             except Exception as e:
                 logger.debug(f"   No short data for {ticker}: {e}")
                 continue
 
-        logger.info(f"   ✅ Got short interest data for {len(short_data)} stocks")
+        logger.info(f"   📊 Short interest enrichment complete: {len(short_data)}/{len(tickers)} tickers enriched")
         return short_data
 
     def enrich_with_ticker_details(self, tickers: List[str]) -> Dict[str, Dict]:
@@ -1109,9 +1174,7 @@ class UniversalDiscoverySystem:
         logger.info(f"   📋 Fetching ticker details for {len(tickers)} candidates...")
         details_data = {}
 
-        if not self.use_mcp:
-            logger.warning("   ⚠️  Ticker details require MCP - skipping")
-            return details_data
+        # Try MCP first, then fall back to Polygon API client when available
 
         for ticker in tickers:
             # Check cache first
@@ -1123,33 +1186,72 @@ class UniversalDiscoverySystem:
                     continue
 
             try:
-                # Get ticker details from MCP
-                details_response = _call_mcp_function(
-                    'mcp__polygon__get_ticker_details',
-                    ticker=ticker
-                )
+                # Try MCP first if available
+                if self.use_mcp:
+                    details_response = _call_mcp_function(
+                        'mcp__polygon__get_ticker_details',
+                        ticker=ticker
+                    )
 
-                if details_response.get('results'):
-                    details = details_response['results']
-                    detail_info = {
-                        'shares_outstanding': details.get('share_class_shares_outstanding', 0),
-                        'market_cap': details.get('market_cap', 0),
-                        'name': details.get('name', ''),
-                        'sector': details.get('sic_description', 'Unknown')
-                    }
-                    details_data[ticker] = detail_info
+                    if details_response.get('results'):
+                        details = details_response['results']
+                        detail_info = {
+                            'shares_outstanding': details.get('share_class_shares_outstanding', 0),
+                            'market_cap': details.get('market_cap', 0),
+                            'name': details.get('name', ''),
+                            'sector': details.get('sic_description', 'Unknown')
+                        }
+                        details_data[ticker] = detail_info
 
-                    # Cache the result
-                    self.ticker_details_cache[cache_key] = {
-                        'data': detail_info,
-                        'timestamp': time.time()
-                    }
+                        # Cache the result
+                        self.ticker_details_cache[cache_key] = {
+                            'data': detail_info,
+                            'timestamp': time.time()
+                        }
+                        continue
+
+                # Fallback to Polygon API client for ticker details
+                elif POLYGON_CLIENT_AVAILABLE:
+                    logger.debug(f"   📡 Using Polygon client for {ticker} details...")
+                    try:
+                        # Initialize client if not already done
+                        if polygon_client is None:
+                            from polygon import RESTClient
+                            client = RESTClient(polygon_api_key)
+                        else:
+                            client = polygon_client
+
+                        # Get ticker details using Polygon client (returns direct object)
+                        details_response = client.get_ticker_details(ticker)
+
+                        if details_response:
+                            detail_info = {
+                                'shares_outstanding': getattr(details_response, 'share_class_shares_outstanding', 0),
+                                'market_cap': getattr(details_response, 'market_cap', 0),
+                                'name': getattr(details_response, 'name', ''),
+                                'sector': getattr(details_response, 'sic_description', 'Unknown')
+                            }
+                            details_data[ticker] = detail_info
+                            # Cache the result
+                            self.ticker_details_cache[cache_key] = {
+                                'data': detail_info,
+                                'timestamp': time.time()
+                            }
+                            logger.debug(f"   ✅ Polygon client details for {ticker}: {detail_info.get('name', 'N/A')}")
+                            continue
+                        else:
+                            logger.debug(f"   ⚠️  No ticker details for {ticker}")
+                    except Exception as polygon_error:
+                        logger.debug(f"   ❌ Polygon client error for {ticker}: {polygon_error}")
+
+                else:
+                    logger.debug(f"   ⚠️  No data source available for {ticker} details")
 
             except Exception as e:
-                logger.debug(f"   No details for {ticker}: {e}")
+                logger.debug(f"   ❌ Error fetching details for {ticker}: {e}")
                 continue
 
-        logger.info(f"   ✅ Got details for {len(details_data)} stocks")
+        logger.info(f"   📋 Ticker details enrichment complete: {len(details_data)}/{len(tickers)} tickers enriched")
         return details_data
 
     def calculate_accumulation_scores(self, df: pd.DataFrame) -> pd.DataFrame:
