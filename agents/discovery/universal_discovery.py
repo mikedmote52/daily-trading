@@ -343,8 +343,9 @@ class UniversalDiscoverySystem:
 
                 total_score = volume_score + momentum_score + pre_explosion_bonus
 
-                # Cache RVOL for display in UI
-                row['rvol'] = round(rvol, 2)
+                # Set RVOL for display in UI
+                if 'rvol' not in row or row.get('rvol', 1.0) == 1.0:
+                    row['rvol'] = round(rvol, 2)
 
                 return total_score
 
@@ -370,9 +371,9 @@ class UniversalDiscoverySystem:
         # Sort and limit
         top_stocks = filtered_df.nlargest(limit, 'accumulation_score')
 
-        # Optional: Get precise RVOL for top candidates (if time permits)
-        logger.info(f"🎯 Enhancing top {len(top_stocks)} candidates with precise RVOL...")
-        top_stocks = self._enhance_top_candidates_rvol(top_stocks)
+        # Optional: Get precise RVOL for top candidates (disabled for production stability)
+        # logger.info(f"🎯 Enhancing top {len(top_stocks)} candidates with precise RVOL...")
+        # top_stocks = self._enhance_top_candidates_rvol(top_stocks)
 
         # Convert to enhanced result format with RVOL data
         results = []
