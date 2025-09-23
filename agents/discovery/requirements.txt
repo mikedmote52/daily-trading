@@ -1,8 +1,8 @@
-# CORE DEPENDENCIES - PYDANTIC 2.1 FOR MCP COMPATIBILITY
+# CORE DEPENDENCIES - PYDANTIC 2.8 FOR STABILITY
 fastapi==0.115.0
 uvicorn[standard]==0.32.0
-pydantic==2.1.1
-pydantic-core==2.4.0
+pydantic==2.8.2
+pydantic-core==2.20.1
 
 # Data Processing - Python 3.13 compatible
 pandas>=2.2.0
