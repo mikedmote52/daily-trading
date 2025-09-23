@@ -289,12 +289,29 @@ class UniversalDiscoverySystem:
 
         logger.info(f"✅ Universe loaded: {len(universe_df)} stocks")
 
-        # Apply basic filtering (Gate A)
-        filtered_df = universe_df[
-            (universe_df['price'] >= 0.01) &
-            (universe_df['price'] <= 100) &
-            (universe_df['volume'] >= 300000)
+        # Apply improved filtering (Gate A) - Optimized for explosive growth
+        def dynamic_volume_filter(row):
+            """Dynamic volume requirement based on price range"""
+            price = row['price']
+            volume = row['volume']
+
+            # Price-based volume requirements (higher price = lower volume requirement)
+            if price < 2:      min_vol = 500000   # Penny stocks need high volume
+            elif price < 10:   min_vol = 300000   # Small caps
+            elif price < 50:   min_vol = 200000   # Mid caps
+            else:              min_vol = 100000   # Large caps (expensive stocks)
+
+            return volume >= min_vol
+
+        # Apply base filters first
+        base_filtered = universe_df[
+            (universe_df['price'] >= 0.50) &    # Eliminate true penny stocks
+            (universe_df['price'] <= 100) &     # Keep within your budget
+            (abs(universe_df['change_pct']) >= 0.5)  # Require minimum movement
         ].copy()
+
+        # Apply dynamic volume filter
+        filtered_df = base_filtered[base_filtered.apply(dynamic_volume_filter, axis=1)].copy()
 
         logger.info(f"✅ Gate A applied: {len(filtered_df)} stocks remaining")
 
@@ -327,21 +344,27 @@ class UniversalDiscoverySystem:
                 else:
                     volume_score = 0   # Below threshold
 
-                # Momentum Score: Reward controlled moves, penalize late-stage gaps
+                # Explosive Momentum Score: REWARD growth, don't penalize it
                 abs_change = abs(change_pct)
-                if abs_change < 2:
-                    momentum_score = abs_change * 15  # Early stage accumulation
-                elif abs_change < 5:
-                    momentum_score = 30 + (abs_change - 2) * 5  # Building momentum
+                if abs_change < 1:
+                    momentum_score = 0  # Flat stocks get nothing
+                elif abs_change < 3:
+                    momentum_score = abs_change * 10  # Early momentum (10-30 points)
+                elif abs_change < 8:
+                    momentum_score = 30 + (abs_change - 3) * 3  # Building momentum (30-45 points)
+                elif abs_change < 15:
+                    momentum_score = 45  # Strong momentum (peak score)
                 else:
-                    momentum_score = max(45 - (abs_change - 5) * 3, 0)  # Late stage penalty
+                    momentum_score = 40  # Slight penalty for huge moves (may be late)
 
-                # Pre-explosion bonus: High volume with minimal price movement
-                pre_explosion_bonus = 0
-                if rvol >= 2.0 and abs_change < 3:
-                    pre_explosion_bonus = 15  # Prime accumulation signal
+                # Breakout Detection Bonus: Volume + momentum combination
+                breakout_bonus = 0
+                if rvol >= 2.0 and 3 <= abs_change <= 8:
+                    breakout_bonus = 20  # Stock breaking out with volume support
+                elif rvol >= 1.5 and 1 <= abs_change <= 3:
+                    breakout_bonus = 10  # Early stage accumulation with movement
 
-                total_score = volume_score + momentum_score + pre_explosion_bonus
+                total_score = volume_score + momentum_score + breakout_bonus
 
                 # Set RVOL for display in UI
                 if 'rvol' not in row or row.get('rvol', 1.0) == 1.0:
