@@ -17,6 +17,9 @@ python-dotenv==1.0.0
 # Polygon API client for enhanced data access
 polygon-api-client==1.15.3
 
-# MCP disabled due to Pydantic conflicts - using Polygon client instead
+# MCP Framework and Polygon MCP Package - Pydantic 2.x compatible
+fastmcp>=0.1.0
+git+https://github.com/polygon-io/mcp_polygon@v0.4.1
 
-# Enhanced Polygon API access optimized for discovery
+# HTTP client for async requests (required by MCP)
+aiohttp>=3.9.0

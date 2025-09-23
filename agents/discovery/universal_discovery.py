@@ -23,9 +23,14 @@ logger = logging.getLogger('UniversalDiscovery')
 import subprocess
 import asyncio
 
-# MCP framework disabled due to Pydantic conflicts
-MCP_FRAMEWORK_AVAILABLE = False
-logger.info("⚠️  MCP framework disabled - Pydantic conflict")
+# Try to import MCP framework
+try:
+    import fastmcp
+    MCP_FRAMEWORK_AVAILABLE = True
+    logger.info("✅ FastMCP framework available")
+except ImportError:
+    MCP_FRAMEWORK_AVAILABLE = False
+    logger.info("⚠️  MCP framework not available")
 
 # Try to import MCP Polygon package
 try:
