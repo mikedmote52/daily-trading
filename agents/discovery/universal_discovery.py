@@ -402,11 +402,24 @@ class UniversalDiscoverySystem:
         if mcp_manager:
             try:
                 import asyncio
-                # Try to start MCP server
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                server_started = loop.run_until_complete(mcp_manager.start_server())
-                loop.close()
+                # Try to start MCP server - handle existing event loop
+                try:
+                    # Check if we already have an event loop
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # We're in an async context, schedule the connection
+                        import concurrent.futures
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            future = executor.submit(self._sync_mcp_connection)
+                            server_started = future.result(timeout=10)
+                    else:
+                        server_started = loop.run_until_complete(mcp_manager.start_server())
+                except RuntimeError:
+                    # No event loop, create new one
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    server_started = loop.run_until_complete(mcp_manager.start_server())
+                    loop.close()
 
                 if server_started:
                     self.use_mcp = True
@@ -415,15 +428,27 @@ class UniversalDiscoverySystem:
                     logger.info("⚠️  MCP server failed to start - using fallback")
             except Exception as e:
                 logger.debug(f"MCP server initialization failed: {e}")
+                logger.info("⚠️  MCP server initialization failed - using fallback")
         else:
             logger.info("⚠️  MCP manager not available")
 
+        # Log final MCP status after initialization
         logger.warning("🚨 REAL DATA ONLY MODE ENABLED - System will FAIL if mock data is detected")
 
         if self.use_mcp:
             logger.info("🚀 POLYGON MCP ENABLED - Using MCP function calls for enhanced data")
         else:
             logger.info("⚠️  Using direct HTTP requests to Polygon API")
+
+    def _sync_mcp_connection(self):
+        """Synchronous wrapper for MCP connection"""
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(mcp_manager.start_server())
+        finally:
+            loop.close()
 
     def get_mcp_filtered_universe(self) -> pd.DataFrame:
         """
