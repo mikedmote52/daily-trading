@@ -117,6 +117,113 @@ class UniversalDiscoverySystem:
 
         return price, volume
 
+    def _calculate_market_volume_stats(self, df: pd.DataFrame) -> Dict:
+        """Calculate market-wide volume statistics for smart RVOL estimation"""
+        try:
+            volume_data = df['volume'].values
+            price_data = df['price'].values
+
+            # Calculate volume statistics by price ranges
+            volume_stats = {
+                'overall_median': np.median(volume_data),
+                'overall_mean': np.mean(volume_data),
+                'overall_std': np.std(volume_data),
+                'price_volume_correlation': np.corrcoef(price_data, volume_data)[0, 1] if len(price_data) > 1 else 0
+            }
+
+            # Price-based volume expectations
+            price_ranges = [(0, 5), (5, 20), (20, 50), (50, 100)]
+            for low, high in price_ranges:
+                mask = (price_data >= low) & (price_data < high)
+                if np.any(mask):
+                    range_volumes = volume_data[mask]
+                    volume_stats[f'price_{low}_{high}_median'] = np.median(range_volumes)
+                    volume_stats[f'price_{low}_{high}_mean'] = np.mean(range_volumes)
+                else:
+                    volume_stats[f'price_{low}_{high}_median'] = volume_stats['overall_median']
+                    volume_stats[f'price_{low}_{high}_mean'] = volume_stats['overall_mean']
+
+            logger.info(f"📊 Market volume stats: median={volume_stats['overall_median']:,.0f}, mean={volume_stats['overall_mean']:,.0f}")
+            return volume_stats
+
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to calculate market stats: {e}")
+            return {'overall_median': 500000, 'overall_mean': 750000, 'overall_std': 500000}
+
+    def _estimate_smart_rvol(self, symbol: str, current_volume: float, price: float, market_stats: Dict) -> float:
+        """Estimate RVOL using market-wide patterns and smart heuristics"""
+        try:
+            # Use cached RVOL if available (for performance)
+            cache_key = f"rvol_{symbol}"
+            if cache_key in self.cache:
+                cached_time, cached_rvol = self.cache[cache_key]
+                if time.time() - cached_time < 3600:  # 1 hour cache
+                    return cached_rvol
+
+            # Smart RVOL estimation based on price range
+            if price < 5:
+                expected_volume = market_stats.get('price_0_5_median', market_stats['overall_median'])
+            elif price < 20:
+                expected_volume = market_stats.get('price_5_20_median', market_stats['overall_median'])
+            elif price < 50:
+                expected_volume = market_stats.get('price_20_50_median', market_stats['overall_median'])
+            else:
+                expected_volume = market_stats.get('price_50_100_median', market_stats['overall_median'])
+
+            # Apply market cap and price adjustments
+            if price < 2:  # Penny stocks typically have higher volume
+                expected_volume *= 1.5
+            elif price > 50:  # Higher price stocks typically have lower volume
+                expected_volume *= 0.7
+
+            # Calculate estimated RVOL
+            estimated_rvol = current_volume / expected_volume if expected_volume > 0 else 1.0
+
+            # Cache the result
+            self.cache[cache_key] = (time.time(), estimated_rvol)
+
+            return max(0.1, min(50.0, estimated_rvol))  # Reasonable bounds
+
+        except Exception as e:
+            logger.debug(f"RVOL estimation error for {symbol}: {e}")
+            return 1.0  # Safe fallback
+
+    def _enhance_top_candidates_rvol(self, top_df: pd.DataFrame) -> pd.DataFrame:
+        """Enhance top candidates with precise RVOL data (with timeout protection)"""
+        enhanced_df = top_df.copy()
+        max_precise_rvol = min(10, len(top_df))  # Limit to top 10 for performance
+
+        logger.info(f"🔍 Getting precise RVOL for top {max_precise_rvol} candidates...")
+
+        for idx, (_, row) in enumerate(top_df.head(max_precise_rvol).iterrows()):
+            try:
+                symbol = row['symbol']
+                # Get precise historical volume with timeout
+                start_time = time.time()
+                precise_avg_volume = _call_polygon_api('get_historical_volume', symbol=symbol, days=20)
+
+                if precise_avg_volume > 0:
+                    precise_rvol = row['volume'] / precise_avg_volume
+                    enhanced_df.at[row.name, 'rvol'] = round(precise_rvol, 2)
+                    enhanced_df.at[row.name, 'rvol_source'] = 'precise'
+
+                    elapsed = time.time() - start_time
+                    logger.debug(f"✅ {symbol}: precise RVOL {precise_rvol:.2f} ({elapsed:.1f}s)")
+                else:
+                    enhanced_df.at[row.name, 'rvol_source'] = 'estimated'
+
+                # Timeout protection: skip remaining if taking too long
+                if time.time() - start_time > 5:  # 5 second per stock limit
+                    logger.info(f"⏰ RVOL timeout protection: stopping at {idx+1}/{max_precise_rvol}")
+                    break
+
+            except Exception as e:
+                logger.debug(f"⚠️ Precise RVOL failed for {row['symbol']}: {e}")
+                enhanced_df.at[row.name, 'rvol_source'] = 'estimated'
+                continue
+
+        return enhanced_df
+
     def get_mcp_filtered_universe(self) -> pd.DataFrame:
         """Get universe using direct Polygon API - GUARANTEED REAL DATA"""
         logger.info("🎯 Loading universe via direct Polygon API...")
@@ -191,19 +298,22 @@ class UniversalDiscoverySystem:
 
         logger.info(f"✅ Gate A applied: {len(filtered_df)} stocks remaining")
 
-        # Enhanced RVOL-based scoring system
-        logger.info("🎯 Calculating enhanced accumulation scores...")
+        # Optimized RVOL-based scoring system
+        logger.info("🎯 Calculating optimized accumulation scores with smart RVOL...")
+
+        # Pre-calculate market-wide volume statistics for smart RVOL estimation
+        market_volume_stats = self._calculate_market_volume_stats(filtered_df)
 
         def calculate_enhanced_score(row):
-            """Calculate multi-factor accumulation score with RVOL"""
+            """Calculate multi-factor accumulation score with optimized RVOL"""
             symbol = row['symbol']
             current_volume = row['volume']
             change_pct = row['change_pct']
+            price = row['price']
 
             try:
-                # Get historical average volume for RVOL calculation
-                avg_volume = _call_polygon_api('get_historical_volume', symbol=symbol, days=20)
-                rvol = current_volume / avg_volume if avg_volume > 0 else 1.0
+                # Smart RVOL estimation without individual API calls
+                rvol = self._estimate_smart_rvol(symbol, current_volume, price, market_volume_stats)
 
                 # Volume Score: Based on RVOL (relative volume is key indicator)
                 if rvol >= 3.0:
@@ -243,9 +353,13 @@ class UniversalDiscoverySystem:
                 # Fallback to simple volume-based scoring
                 return (current_volume / 1000000) * 5
 
-        # Apply enhanced scoring
+        # Apply optimized scoring (vectorized where possible)
+        logger.info(f"📊 Processing {len(filtered_df)} stocks with optimized RVOL...")
         scored_data = []
-        for _, row in filtered_df.iterrows():
+        for idx, (_, row) in enumerate(filtered_df.iterrows()):
+            if idx % 500 == 0 and idx > 0:
+                logger.info(f"   ⚡ Processed {idx}/{len(filtered_df)} stocks...")
+
             row_dict = row.to_dict()
             row_dict['accumulation_score'] = calculate_enhanced_score(row)
             scored_data.append(row_dict)
@@ -255,6 +369,10 @@ class UniversalDiscoverySystem:
 
         # Sort and limit
         top_stocks = filtered_df.nlargest(limit, 'accumulation_score')
+
+        # Optional: Get precise RVOL for top candidates (if time permits)
+        logger.info(f"🎯 Enhancing top {len(top_stocks)} candidates with precise RVOL...")
+        top_stocks = self._enhance_top_candidates_rvol(top_stocks)
 
         # Convert to enhanced result format with RVOL data
         results = []
