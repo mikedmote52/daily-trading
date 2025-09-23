@@ -314,7 +314,7 @@ class UniversalDiscoverySystem:
         base_filtered = universe_df[
             (universe_df['price'] >= 0.50) &    # Eliminate true penny stocks
             (universe_df['price'] <= 100) &     # Keep within your budget
-            (abs(universe_df['change_pct']) >= 0.5) &  # Require minimum movement
+            # REMOVED movement requirement - we want PRE-explosion stocks (stealth accumulation)
             # ETF/Fund/REIT exclusion filter - STOCKS ONLY per user requirement
             ~universe_df['symbol'].str.contains(r'ETF|FUND|REIT|SPY|QQQ|VTI|IWM|DIA', case=False, na=False) &
             ~universe_df['symbol'].str.endswith(('X', 'Y', 'Z'), na=False)  # Common ETF suffixes
@@ -331,8 +331,12 @@ class UniversalDiscoverySystem:
         # Pre-calculate market-wide volume statistics for smart RVOL estimation
         market_volume_stats = self._calculate_market_volume_stats(filtered_df)
 
-        def calculate_enhanced_score(row):
-            """Calculate multi-factor accumulation score with optimized RVOL"""
+        def calculate_pre_explosion_score(row):
+            """
+            PRE-EXPLOSION ACCUMULATION DETECTOR
+            Based on June-July winners: VIGL +324%, CRWV +171%, AEVA +162%, CRDO +108%
+            Pattern: High volume + LOW price movement = Stealth accumulation before explosion
+            """
             symbol = row['symbol']
             current_volume = row['volume']
             change_pct = row['change_pct']
@@ -342,39 +346,62 @@ class UniversalDiscoverySystem:
                 # Smart RVOL estimation without individual API calls
                 rvol = self._estimate_smart_rvol(symbol, current_volume, price, market_volume_stats)
 
-                # Volume Score: Based on RVOL (relative volume is key indicator)
-                if rvol >= 3.0:
-                    volume_score = 40  # Extremely high volume
-                elif rvol >= 2.0:
-                    volume_score = 30  # High volume surge
-                elif rvol >= 1.5:
-                    volume_score = 20  # Moderate increase
-                elif rvol >= 1.3:
-                    volume_score = 10  # Slight increase (config minimum)
-                else:
-                    volume_score = 0   # Below threshold
-
-                # Explosive Momentum Score: REWARD growth, don't penalize it
+                # 1. STEALTH ACCUMULATION SCORE (40% weight) - KEY PATTERN
+                # High volume with minimal price movement = institutions accumulating quietly
+                stealth_score = 0
                 abs_change = abs(change_pct)
-                if abs_change < 1:
-                    momentum_score = 0  # Flat stocks get nothing
-                elif abs_change < 3:
-                    momentum_score = abs_change * 10  # Early momentum (10-30 points)
-                elif abs_change < 8:
-                    momentum_score = 30 + (abs_change - 3) * 3  # Building momentum (30-45 points)
-                elif abs_change < 15:
-                    momentum_score = 45  # Strong momentum (peak score)
-                else:
-                    momentum_score = 40  # Slight penalty for huge moves (may be late)
 
-                # Breakout Detection Bonus: Volume + momentum combination
-                breakout_bonus = 0
-                if rvol >= 2.0 and 3 <= abs_change <= 8:
-                    breakout_bonus = 20  # Stock breaking out with volume support
-                elif rvol >= 1.5 and 1 <= abs_change <= 3:
-                    breakout_bonus = 10  # Early stage accumulation with movement
+                if rvol >= 2.0:  # Significant volume increase
+                    if abs_change <= 2.0:  # But minimal price movement
+                        stealth_score = 40  # PERFECT stealth accumulation
+                    elif abs_change <= 4.0:
+                        stealth_score = 30  # Good accumulation pattern
+                    else:
+                        stealth_score = 10  # Volume there but maybe late
+                elif rvol >= 1.5:  # Moderate volume increase
+                    if abs_change <= 1.5:
+                        stealth_score = 30  # Good stealth pattern
+                    elif abs_change <= 3.0:
+                        stealth_score = 20  # Decent pattern
+                    else:
+                        stealth_score = 5   # Getting noisy
+                elif rvol >= 1.3:  # Slight volume increase
+                    if abs_change <= 1.0:
+                        stealth_score = 20  # Early accumulation
+                    else:
+                        stealth_score = 5   # Minimal pattern
 
-                total_score = volume_score + momentum_score + breakout_bonus
+                # 2. SMALL CAP EXPLOSIVE POTENTIAL (30% weight)
+                # Lower priced stocks have bigger explosion potential (like your winners)
+                size_score = 0
+                if price <= 10:      size_score = 30    # Highest explosion potential
+                elif price <= 25:   size_score = 25    # Good potential
+                elif price <= 50:   size_score = 20    # Moderate potential
+                elif price <= 100:  size_score = 10    # Limited upside
+
+                # 3. COILING PATTERN BONUS (20% weight)
+                # Low volatility with building volume = pressure building
+                coiling_bonus = 0
+                if rvol >= 1.5 and abs_change <= 2.0:
+                    coiling_bonus = 20  # Perfect coiling - high volume, low movement
+                elif rvol >= 1.3 and abs_change <= 1.5:
+                    coiling_bonus = 15  # Good coiling pattern
+                elif rvol >= 1.2 and abs_change <= 1.0:
+                    coiling_bonus = 10  # Early coiling
+
+                # 4. VOLUME QUALITY BONUS (10% weight)
+                # Reward exceptional volume patterns
+                volume_quality = 0
+                if rvol >= 3.0:      volume_quality = 10   # Exceptional volume
+                elif rvol >= 2.5:   volume_quality = 8    # Very high volume
+                elif rvol >= 2.0:   volume_quality = 6    # High volume
+                elif rvol >= 1.5:   volume_quality = 4    # Good volume
+
+                total_score = stealth_score + size_score + coiling_bonus + volume_quality
+
+                # Penalty for stocks that already exploded (we're too late)
+                if abs_change > 8.0:
+                    total_score *= 0.5  # Cut score in half for exploded stocks
 
                 # Set RVOL for display in UI
                 if 'rvol' not in row or row.get('rvol', 1.0) == 1.0:
@@ -395,7 +422,7 @@ class UniversalDiscoverySystem:
                 logger.info(f"   ⚡ Processed {idx}/{len(filtered_df)} stocks...")
 
             row_dict = row.to_dict()
-            row_dict['accumulation_score'] = calculate_enhanced_score(row)
+            row_dict['accumulation_score'] = calculate_pre_explosion_score(row)
             scored_data.append(row_dict)
 
         filtered_df = pd.DataFrame(scored_data)
@@ -423,13 +450,23 @@ class UniversalDiscoverySystem:
                 'signals': []  # Will be populated with detected signals
             }
 
-            # Add signal indicators based on metrics
-            if row.get('rvol', 1.0) >= 2.0:
-                result['signals'].append('High Volume Surge')
-            if row.get('rvol', 1.0) >= 2.0 and abs(row['change_pct']) < 3:
-                result['signals'].append('Pre-Explosion Pattern')
+            # Add signal indicators based on PRE-EXPLOSION patterns (like June-July winners)
+            if row.get('rvol', 1.0) >= 2.0 and abs(row['change_pct']) <= 2.0:
+                result['signals'].append('Stealth Accumulation Pattern')  # Like VIGL, CRWV before explosion
+            elif row.get('rvol', 1.0) >= 1.5 and abs(row['change_pct']) <= 1.5:
+                result['signals'].append('Early Accumulation')
+            elif row.get('rvol', 1.0) >= 2.0:
+                result['signals'].append('High Volume Activity')
+
+            if row['price'] <= 10:
+                result['signals'].append('Small Cap Explosive Potential')  # Like your biggest winners
+            elif row['price'] <= 25:
+                result['signals'].append('Mid-Small Cap Opportunity')
+
             if row['accumulation_score'] >= 70:
-                result['signals'].append('Strong Accumulation')
+                result['signals'].append('Pre-Explosion Setup Complete')
+            elif row['accumulation_score'] >= 50:
+                result['signals'].append('Building Accumulation Pattern')
 
             results.append(result)
 
