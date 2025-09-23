@@ -265,18 +265,15 @@ async def run_discovery():
         logger.info(f"🔍 Starting discovery scan: {scan_id}")
 
         # Run discovery with timeout protection
-        discovery_result = discovery_system.run_universal_discovery()
+        discovery_result = discovery_system.discover(gates=['A'], limit=20)
 
         # Validate discovery result structure
-        if not isinstance(discovery_result, dict):
+        if not isinstance(discovery_result, list):
             logger.error(f"❌ Invalid discovery result type: {type(discovery_result)}")
             raise HTTPException(status_code=500, detail="Discovery returned invalid result format")
 
-        # Extract the actual results with validation
-        candidates = discovery_result.get('results', [])
-        if not isinstance(candidates, list):
-            logger.warning(f"⚠️ Candidates not a list, converting: {type(candidates)}")
-            candidates = []
+        # Use the discovery result directly (it's already a list of candidates)
+        candidates = discovery_result
 
         # Cache results if Redis is available
         if redis_client:
@@ -365,18 +362,15 @@ async def get_top_signals():
         logger.info("🚀 RUNNING REAL DISCOVERY PIPELINE")
 
         # Run discovery with validation
-        discovery_result = discovery_system.run_universal_discovery()
+        discovery_result = discovery_system.discover(gates=['A'], limit=20)
 
         # Validate discovery result structure
-        if not isinstance(discovery_result, dict):
+        if not isinstance(discovery_result, list):
             logger.error(f"❌ Invalid discovery result type: {type(discovery_result)}")
             return []
 
-        # Extract the actual results with validation
-        candidates = discovery_result.get('results', [])
-        if not isinstance(candidates, list):
-            logger.warning(f"⚠️ Candidates not a list: {type(candidates)}")
-            return []
+        # Use the discovery result directly (it's already a list of candidates)
+        candidates = discovery_result
 
         # Format for frontend with error handling
         formatted_results = []
@@ -391,9 +385,9 @@ async def get_top_signals():
                     "symbol": symbol,
                     "price": float(candidate.get("price", 0)),
                     "score": int(candidate.get("accumulation_score", 0)),
-                    "volume": int(candidate.get("volume_surge", 0)),
-                    "rvol": float(candidate.get("volume_surge", 0)),
-                    "reason": str(candidate.get("thesis", "Strong accumulation pattern detected"))
+                    "volume": int(candidate.get("volume", 0)),
+                    "rvol": float(candidate.get("rvol", 1.0)),
+                    "reason": ", ".join(candidate.get("signals", ["Strong accumulation pattern detected"]))
                 }
                 formatted_results.append(formatted_result)
             except (ValueError, TypeError) as e:
