@@ -1,11 +1,12 @@
-# CORE DEPENDENCIES - COMPATIBLE VERSIONS
+# CORE DEPENDENCIES - PYDANTIC 2.1 FOR MCP COMPATIBILITY
 fastapi==0.115.0
 uvicorn[standard]==0.32.0
-pydantic==2.10.0
+pydantic==2.1.1
+pydantic-core==2.4.0
 
-# Data Processing - REQUIRED
-pandas==2.1.3
-numpy==1.25.0
+# Data Processing - Python 3.13 compatible
+pandas>=2.2.0
+numpy>=1.26.0
 requests==2.31.0
 
 # Redis for caching
@@ -17,8 +18,8 @@ python-dotenv==1.0.0
 # Polygon API client for enhanced data access
 polygon-api-client==1.15.3
 
-# MCP Framework and Polygon MCP Package - Pydantic 2.x compatible
-fastmcp>=0.1.0
+# MCP Framework and Polygon MCP Package - Pydantic 2.1 compatible versions
+fastmcp==0.1.0
 git+https://github.com/polygon-io/mcp_polygon@v0.4.1
 
 # HTTP client for async requests (required by MCP)
