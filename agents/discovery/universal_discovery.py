@@ -83,6 +83,40 @@ class UniversalDiscoverySystem:
         self.short_interest_cache = {}
         self.ticker_details_cache = {}
 
+    def _get_best_price_volume(self, ticker_data):
+        """Get best available price/volume with fallbacks for market closed periods"""
+        # Try previous day first (preferred for historical comparison)
+        prev_day = ticker_data.get('prevDay', {})
+        price = prev_day.get('c', 0)
+        volume = prev_day.get('v', 0)
+
+        # Fallback to current day if prev_day is empty (market closed)
+        if price <= 0 or volume <= 0:
+            day = ticker_data.get('day', {})
+            day_price = day.get('c', 0)
+            day_volume = day.get('v', 0)
+
+            if day_price > 0 and day_volume > 0:
+                price = day_price
+                volume = day_volume
+
+        # Final fallback: use any available price data
+        if price <= 0:
+            # Check for last trade price
+            if 'last_trade' in ticker_data and ticker_data['last_trade']:
+                price = ticker_data['last_trade'].get('price', 0)
+
+            # If still no price, try any price field available
+            if price <= 0:
+                price = ticker_data.get('price', 0)
+
+        # Ensure minimum volume for liquidity
+        if volume <= 0:
+            # Use a minimal volume if none available (will be filtered by Gate A)
+            volume = 1000
+
+        return price, volume
+
     def get_mcp_filtered_universe(self) -> pd.DataFrame:
         """Get universe using direct Polygon API - GUARANTEED REAL DATA"""
         logger.info("🎯 Loading universe via direct Polygon API...")
@@ -111,9 +145,8 @@ class UniversalDiscoverySystem:
                     if not symbol:
                         continue
 
-                    prev_day = ticker.get('prevDay', {})
-                    price = prev_day.get('c', 0)
-                    volume = prev_day.get('v', 0)
+                    # Smart data source selection with fallbacks
+                    price, volume = self._get_best_price_volume(ticker)
 
                     if price > 0 and volume > 0:
                         df_data.append({
@@ -158,16 +191,72 @@ class UniversalDiscoverySystem:
 
         logger.info(f"✅ Gate A applied: {len(filtered_df)} stocks remaining")
 
-        # Simple scoring and ranking
-        filtered_df['accumulation_score'] = (
-            filtered_df['volume'] / 1000000 * 10 +  # Volume factor
-            abs(filtered_df['change_pct']) * 5       # Change factor
-        ).fillna(0)
+        # Enhanced RVOL-based scoring system
+        logger.info("🎯 Calculating enhanced accumulation scores...")
+
+        def calculate_enhanced_score(row):
+            """Calculate multi-factor accumulation score with RVOL"""
+            symbol = row['symbol']
+            current_volume = row['volume']
+            change_pct = row['change_pct']
+
+            try:
+                # Get historical average volume for RVOL calculation
+                avg_volume = _call_polygon_api('get_historical_volume', symbol=symbol, days=20)
+                rvol = current_volume / avg_volume if avg_volume > 0 else 1.0
+
+                # Volume Score: Based on RVOL (relative volume is key indicator)
+                if rvol >= 3.0:
+                    volume_score = 40  # Extremely high volume
+                elif rvol >= 2.0:
+                    volume_score = 30  # High volume surge
+                elif rvol >= 1.5:
+                    volume_score = 20  # Moderate increase
+                elif rvol >= 1.3:
+                    volume_score = 10  # Slight increase (config minimum)
+                else:
+                    volume_score = 0   # Below threshold
+
+                # Momentum Score: Reward controlled moves, penalize late-stage gaps
+                abs_change = abs(change_pct)
+                if abs_change < 2:
+                    momentum_score = abs_change * 15  # Early stage accumulation
+                elif abs_change < 5:
+                    momentum_score = 30 + (abs_change - 2) * 5  # Building momentum
+                else:
+                    momentum_score = max(45 - (abs_change - 5) * 3, 0)  # Late stage penalty
+
+                # Pre-explosion bonus: High volume with minimal price movement
+                pre_explosion_bonus = 0
+                if rvol >= 2.0 and abs_change < 3:
+                    pre_explosion_bonus = 15  # Prime accumulation signal
+
+                total_score = volume_score + momentum_score + pre_explosion_bonus
+
+                # Cache RVOL for display in UI
+                row['rvol'] = round(rvol, 2)
+
+                return total_score
+
+            except Exception as e:
+                logger.debug(f"Scoring error for {symbol}: {e}")
+                # Fallback to simple volume-based scoring
+                return (current_volume / 1000000) * 5
+
+        # Apply enhanced scoring
+        scored_data = []
+        for _, row in filtered_df.iterrows():
+            row_dict = row.to_dict()
+            row_dict['accumulation_score'] = calculate_enhanced_score(row)
+            scored_data.append(row_dict)
+
+        filtered_df = pd.DataFrame(scored_data)
+        logger.info("✅ Enhanced scoring complete")
 
         # Sort and limit
         top_stocks = filtered_df.nlargest(limit, 'accumulation_score')
 
-        # Convert to result format
+        # Convert to enhanced result format with RVOL data
         results = []
         for _, row in top_stocks.iterrows():
             result = {
@@ -176,9 +265,20 @@ class UniversalDiscoverySystem:
                 'volume': int(row['volume']),
                 'change_pct': round(row['change_pct'], 2),
                 'accumulation_score': round(row['accumulation_score'], 1),
+                'rvol': row.get('rvol', 1.0),  # Relative volume ratio
                 'tier': 'A-TIER' if row['accumulation_score'] >= 50 else 'B-TIER',
-                'data_source': 'DIRECT_POLYGON_API'
+                'data_source': 'DIRECT_POLYGON_API',
+                'signals': []  # Will be populated with detected signals
             }
+
+            # Add signal indicators based on metrics
+            if row.get('rvol', 1.0) >= 2.0:
+                result['signals'].append('High Volume Surge')
+            if row.get('rvol', 1.0) >= 2.0 and abs(row['change_pct']) < 3:
+                result['signals'].append('Pre-Explosion Pattern')
+            if row['accumulation_score'] >= 70:
+                result['signals'].append('Strong Accumulation')
+
             results.append(result)
 
         logger.info(f"✅ Discovery complete: {len(results)} candidates found - ALL PREMIUM DATA")

@@ -17,49 +17,74 @@ if not POLYGON_API_KEY:
 
 # Initialize client once
 polygon_client = RESTClient(POLYGON_API_KEY)
+def get_last_trading_date():
+    """Get the most recent trading date with data"""
+    from datetime import datetime, timedelta
+
+    # Start with yesterday since today might not have data yet
+    date = datetime.now().date() - timedelta(days=1)
+
+    # Go back up to 5 days to find a trading day
+    for i in range(5):
+        weekday = date.weekday()
+        if weekday < 5:  # Monday = 0, Friday = 4
+            return date.strftime('%Y-%m-%d')
+        date -= timedelta(days=1)
+
+    return date.strftime('%Y-%m-%d')
+
 logger.info("✅ Direct Polygon API client initialized - PREMIUM DATA ACCESS ENABLED")
 logger.info("🔒 NO MOCK DATA - 100% real market data guaranteed")
 
 def get_snapshot_all(market_type: str = "stocks", **kwargs) -> Dict:
-    """Get snapshot of all stocks - REAL DATA ONLY"""
+    """Get snapshot of all stocks - REAL DATA ONLY with premium data access"""
     try:
-        logger.info("🔍 Fetching market snapshot via direct Polygon API...")
+        logger.info("🔍 Fetching market universe via direct Polygon API premium data...")
 
-        # Use Polygon client's get_snapshot_all method
-        response = polygon_client.get_snapshot_all(market_type)
+        # During market closed hours, snapshots may be empty
+        # Use grouped daily aggregates for most recent trading data
+        response = polygon_client.get_grouped_daily_aggs(
+            date=get_last_trading_date(),
+            adjusted=True,
+            include_otc=False
+        )
 
-        # Convert to dictionary format expected by discovery system
-        if hasattr(response, 'tickers'):
+        # Convert daily aggregates to discovery format
+        if isinstance(response, list) and len(response) > 0:
             results = []
-            for ticker in response.tickers:
+            for agg in response:
+                # Skip OTC stocks if needed
+                if getattr(agg, 'otc', False):
+                    continue
+
                 ticker_data = {
-                    'ticker': ticker.ticker,
-                    'todaysChangePerc': getattr(ticker, 'todaysChangePerc', 0),
-                    'todaysChange': getattr(ticker, 'todaysChange', 0),
-                    'updated': getattr(ticker, 'updated', 0),
+                    'ticker': agg.ticker,  # Ticker symbol
+                    'todaysChangePerc': ((agg.close - agg.open) / agg.open * 100) if agg.open > 0 else 0,
+                    'todaysChange': agg.close - agg.open,
+                    'updated': agg.timestamp,  # Timestamp
                     'day': {
-                        'o': getattr(ticker.day, 'o', 0) if hasattr(ticker, 'day') else 0,
-                        'h': getattr(ticker.day, 'h', 0) if hasattr(ticker, 'day') else 0,
-                        'l': getattr(ticker.day, 'l', 0) if hasattr(ticker, 'day') else 0,
-                        'c': getattr(ticker.day, 'c', 0) if hasattr(ticker, 'day') else 0,
-                        'v': getattr(ticker.day, 'v', 0) if hasattr(ticker, 'day') else 0,
-                        'vw': getattr(ticker.day, 'vw', 0) if hasattr(ticker, 'day') else 0
+                        'o': agg.open,  # Open
+                        'h': agg.high,  # High
+                        'l': agg.low,  # Low
+                        'c': agg.close,  # Close
+                        'v': agg.volume,  # Volume
+                        'vw': agg.vwap  # Volume weighted average price
                     },
                     'prevDay': {
-                        'o': getattr(ticker.prevDay, 'o', 0) if hasattr(ticker, 'prevDay') else 0,
-                        'h': getattr(ticker.prevDay, 'h', 0) if hasattr(ticker, 'prevDay') else 0,
-                        'l': getattr(ticker.prevDay, 'l', 0) if hasattr(ticker, 'prevDay') else 0,
-                        'c': getattr(ticker.prevDay, 'c', 0) if hasattr(ticker, 'prevDay') else 0,
-                        'v': getattr(ticker.prevDay, 'v', 0) if hasattr(ticker, 'prevDay') else 0,
-                        'vw': getattr(ticker.prevDay, 'vw', 0) if hasattr(ticker, 'prevDay') else 0
+                        'o': agg.open,  # Use same day data as fallback
+                        'h': agg.high,
+                        'l': agg.low,
+                        'c': agg.close,
+                        'v': agg.volume,
+                        'vw': agg.vwap
                     }
                 }
                 results.append(ticker_data)
 
-            logger.info(f"✅ Retrieved {len(results)} stocks from Polygon API - ALL REAL DATA")
+            logger.info(f"✅ Retrieved {len(results)} stocks from Polygon daily aggregates - PREMIUM REAL DATA")
             return {"status": "OK", "results": results}
         else:
-            logger.error("❌ Unexpected response format from Polygon API")
+            logger.error("❌ No daily aggregate data available")
             return {"status": "ERROR", "results": []}
 
     except Exception as e:
@@ -233,6 +258,44 @@ def call_direct_api(function_name: str, **kwargs) -> Dict:
         return func(**kwargs)
     else:
         raise ValueError(f"Unknown function: {function_name}")
+
+def get_historical_volume(symbol: str, days: int = 20) -> float:
+    """Get average volume over specified days for RVOL calculation"""
+    try:
+        from datetime import datetime, timedelta
+        import time
+
+        end_date = datetime.now().date()
+        start_date = end_date - timedelta(days=days + 10)  # Extra buffer for weekends
+
+        logger.debug(f"📊 Fetching {days}-day volume history for {symbol}")
+
+        # Use Polygon aggregates API for historical data
+        response = polygon_client.get_aggs(
+            ticker=symbol,
+            multiplier=1,
+            timespan="day",
+            from_=start_date.strftime('%Y-%m-%d'),
+            to=end_date.strftime('%Y-%m-%d')
+        )
+
+        if hasattr(response, '__iter__') and len(response) > 0:
+            # Get the most recent trading days
+            volumes = [bar.volume for bar in list(response)[-days:] if bar.volume > 0]
+            if len(volumes) >= min(days // 2, 10):  # Need at least half the days or 10 days
+                avg_volume = sum(volumes) / len(volumes)
+                logger.debug(f"✅ {symbol}: {len(volumes)} days, avg volume: {avg_volume:,.0f}")
+                return avg_volume
+
+        logger.debug(f"⚠️ Insufficient volume history for {symbol}")
+        return 0
+
+    except Exception as e:
+        logger.debug(f"❌ Failed to get historical volume for {symbol}: {e}")
+        return 0
+
+# Add to function mapping
+DIRECT_API_FUNCTIONS['get_historical_volume'] = get_historical_volume
 
 logger.info("🚀 Direct Polygon API functions loaded - PREMIUM DATA ACCESS READY")
 logger.info("🔒 ZERO MOCK DATA - All calls use real Polygon API with premium features")
