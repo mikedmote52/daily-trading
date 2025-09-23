@@ -87,35 +87,124 @@ def _test_mcp_availability():
 
 # MCP Server Management
 class HttpMcpClient:
-    """Simple HTTP client for MCP server communication"""
+    """FastMCP HTTP client with proper session handling"""
     def __init__(self, server_url):
         self.server_url = server_url
+        self.session_id = None
+        self.initialized = False
 
-    async def call_function(self, function_name, **kwargs):
-        """Call MCP function via HTTP using FastMCP protocol"""
+    async def initialize(self):
+        """Initialize MCP session"""
         import aiohttp
         import json
+        import uuid
+
+        if self.initialized:
+            return True
 
         try:
             async with aiohttp.ClientSession() as session:
-                # FastMCP uses a different protocol - direct function calls via HTTP POST
-                # The MCP server translates function names to Polygon API calls
-                payload = {
-                    "method": function_name,
-                    "params": kwargs
+                init_payload = {
+                    "jsonrpc": "2.0",
+                    "id": str(uuid.uuid4()),
+                    "method": "initialize",
+                    "params": {
+                        "protocolVersion": "2024-11-05",
+                        "capabilities": {
+                            "tools": {}
+                        },
+                        "clientInfo": {
+                            "name": "discovery-client",
+                            "version": "1.0.0"
+                        }
+                    }
                 }
 
-                # Try the MCP endpoint
+                headers = {
+                    "Content-Type": "application/json",
+                    "Accept": "application/json, text/event-stream"
+                }
+
+                async with session.post(
+                    self.server_url,
+                    json=init_payload,
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    if response.status == 200:
+                        # Parse Server-Sent Events format
+                        text = await response.text()
+                        if text.startswith("event: message\ndata: "):
+                            json_data = text.split("data: ", 1)[1].strip()
+                            result = json.loads(json_data)
+                            if "result" in result:
+                                self.initialized = True
+                                logger.info(f"✅ MCP session initialized with server: {result.get('result', {}).get('serverInfo', {}).get('name', 'Unknown')}")
+                                return True
+                        logger.warning(f"MCP initialization failed: unexpected response format")
+                        return False
+                    else:
+                        logger.warning(f"MCP initialization failed: {response.status}")
+                        return False
+        except Exception as e:
+            logger.debug(f"MCP initialization error: {e}")
+            return False
+
+    async def call_function(self, function_name, **kwargs):
+        """Call MCP function via HTTP using JSON-RPC 2.0 protocol"""
+        import aiohttp
+        import json
+        import uuid
+
+        # Ensure session is initialized
+        if not self.initialized:
+            if not await self.initialize():
+                logger.debug(f"MCP session initialization failed for {function_name}")
+                return None
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                # MCP uses JSON-RPC 2.0 protocol
+                payload = {
+                    "jsonrpc": "2.0",
+                    "id": str(uuid.uuid4()),
+                    "method": "tools/call",
+                    "params": {
+                        "name": function_name,
+                        "arguments": kwargs
+                    }
+                }
+
+                headers = {
+                    "Content-Type": "application/json",
+                    "Accept": "application/json, text/event-stream"
+                }
+
                 async with session.post(
                     self.server_url,
                     json=payload,
-                    headers={"Content-Type": "application/json"},
+                    headers=headers,
                     timeout=aiohttp.ClientTimeout(total=30)
                 ) as response:
                     if response.status == 200:
-                        result = await response.json()
-                        logger.debug(f"MCP call {function_name} succeeded")
-                        return result
+                        # Handle Server-Sent Events format
+                        text = await response.text()
+                        if text.startswith("event: message\ndata: "):
+                            json_data = text.split("data: ", 1)[1].strip()
+                            result = json.loads(json_data)
+                        else:
+                            # Try direct JSON parse
+                            result = json.loads(text)
+
+                        if "result" in result:
+                            logger.debug(f"✅ MCP call {function_name} succeeded")
+                            return result["result"]
+                        elif "error" in result:
+                            logger.warning(f"MCP call error: {result['error']}")
+                            return None
+                        else:
+                            logger.debug(f"Unexpected MCP response: {result}")
+                            return None
                     else:
                         text = await response.text()
                         logger.warning(f"MCP call failed: {response.status} - {text[:200]}")
@@ -1190,7 +1279,7 @@ class UniversalDiscoverySystem:
                         continue
 
                 # Fallback to Polygon API client for short interest
-                elif POLYGON_CLIENT_AVAILABLE:
+                if POLYGON_CLIENT_AVAILABLE and not self.use_mcp:
                     logger.debug(f"   📡 Using Polygon client for {ticker} short interest...")
                     try:
                         # Initialize client if not already done
@@ -1280,7 +1369,7 @@ class UniversalDiscoverySystem:
                         continue
 
                 # Fallback to Polygon API client for ticker details
-                elif POLYGON_CLIENT_AVAILABLE:
+                if POLYGON_CLIENT_AVAILABLE and not self.use_mcp:
                     logger.debug(f"   📡 Using Polygon client for {ticker} details...")
                     try:
                         # Initialize client if not already done
