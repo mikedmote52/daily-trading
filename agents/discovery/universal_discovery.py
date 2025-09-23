@@ -289,6 +289,13 @@ class UniversalDiscoverySystem:
 
         logger.info(f"✅ Universe loaded: {len(universe_df)} stocks")
 
+        # Count ETFs/Funds for filtering transparency
+        etf_fund_count = universe_df[
+            universe_df['symbol'].str.contains(r'ETF|FUND|REIT|SPY|QQQ|VTI|IWM|DIA', case=False, na=False) |
+            universe_df['symbol'].str.endswith(('X', 'Y', 'Z'), na=False)
+        ].shape[0]
+        logger.info(f"🚫 Filtering out {etf_fund_count} ETFs/funds (stocks only per user requirement)")
+
         # Apply improved filtering (Gate A) - Optimized for explosive growth
         def dynamic_volume_filter(row):
             """Dynamic volume requirement based on price range"""
@@ -303,11 +310,14 @@ class UniversalDiscoverySystem:
 
             return volume >= min_vol
 
-        # Apply base filters first
+        # Apply base filters first - ETF/Fund exclusion added per user request
         base_filtered = universe_df[
             (universe_df['price'] >= 0.50) &    # Eliminate true penny stocks
             (universe_df['price'] <= 100) &     # Keep within your budget
-            (abs(universe_df['change_pct']) >= 0.5)  # Require minimum movement
+            (abs(universe_df['change_pct']) >= 0.5) &  # Require minimum movement
+            # ETF/Fund/REIT exclusion filter - STOCKS ONLY per user requirement
+            ~universe_df['symbol'].str.contains(r'ETF|FUND|REIT|SPY|QQQ|VTI|IWM|DIA', case=False, na=False) &
+            ~universe_df['symbol'].str.endswith(('X', 'Y', 'Z'), na=False)  # Common ETF suffixes
         ].copy()
 
         # Apply dynamic volume filter
