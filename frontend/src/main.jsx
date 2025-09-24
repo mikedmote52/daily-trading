@@ -283,30 +283,30 @@ function Portfolio({ onRefresh }) {
           </div>
 
           {/* Portfolio Performance Summary */}
-          {portfolio.positions.length > 0 && (
+          {(portfolio.positions && portfolio.positions.length > 0) && (
             <div style={{ marginTop: 16, padding: 16, background: "rgba(0,0,0,0.2)", borderRadius: 6 }}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
                 <div>
                   <div style={{ color: "#9ca3af", fontSize: 11, marginBottom: 2 }}>Total Positions</div>
-                  <div style={{ fontSize: 16, fontWeight: "bold" }}>{portfolio.positions.length}</div>
+                  <div style={{ fontSize: 16, fontWeight: "bold" }}>{(portfolio.positions || []).length}</div>
                 </div>
                 <div>
                   <div style={{ color: "#9ca3af", fontSize: 11, marginBottom: 2 }}>Positions in Red</div>
                   <div style={{ fontSize: 16, fontWeight: "bold", color: "#dc2626" }}>
-                    {portfolio.positions.filter(p => p.unrealized_pl < 0).length}
+                    {(portfolio.positions || []).filter(p => p.unrealized_pl < 0).length}
                   </div>
                 </div>
                 <div>
                   <div style={{ color: "#9ca3af", fontSize: 11, marginBottom: 2 }}>Total Unrealized P&L</div>
                   <div style={{ fontSize: 16, fontWeight: "bold",
-                               color: portfolio.positions.reduce((sum, p) => sum + (p.unrealized_pl || 0), 0) >= 0 ? "#10b981" : "#dc2626" }}>
-                    ${portfolio.positions.reduce((sum, p) => sum + (p.unrealized_pl || 0), 0).toFixed(2)}
+                               color: (portfolio.positions || []).reduce((sum, p) => sum + Number(p.unrealized_pl || 0), 0) >= 0 ? "#10b981" : "#dc2626" }}>
+                    ${Number((portfolio.positions || []).reduce((sum, p) => sum + Number(p.unrealized_pl || 0), 0)).toFixed(2)}
                   </div>
                 </div>
                 <div>
                   <div style={{ color: "#9ca3af", fontSize: 11, marginBottom: 2 }}>High Risk Positions</div>
                   <div style={{ fontSize: 16, fontWeight: "bold", color: "#dc2626" }}>
-                    {portfolio.positions.filter(p => p.unrealized_plpc < -0.20).length}
+                    {(portfolio.positions || []).filter(p => p.unrealized_plpc < -0.20).length}
                   </div>
                 </div>
               </div>
