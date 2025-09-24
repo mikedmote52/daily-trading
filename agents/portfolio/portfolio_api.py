@@ -89,10 +89,10 @@ async def rate_limit_middleware(request: Request, call_next):
 
     return response
 
-# Environment configuration - Match exact pattern from working orders service
+# Environment configuration - EXACT match from working orders service
 ALPACA_BASE = os.environ.get("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
-ALPACA_KEY = os.environ.get("ALPACA_KEY", "").strip().strip("'\"")  # Remove quotes and whitespace
-ALPACA_SECRET = os.environ.get("ALPACA_SECRET", "").strip().strip("'\"")  # Remove quotes and whitespace
+ALPACA_KEY = os.environ.get("ALPACA_KEY", "")  # Exact same as working orders API
+ALPACA_SECRET = os.environ.get("ALPACA_SECRET", "")  # Exact same as working orders API
 
 def _auth_headers():
     """Get Alpaca authentication headers"""
@@ -404,25 +404,178 @@ def get_performance():
         logger.error(f"Error getting performance metrics: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/enhanced-positions")
+def get_enhanced_positions():
+    """Get positions enriched with discovery context and current market data"""
+    try:
+        # Get current positions from Alpaca
+        base_positions = get_positions()
+
+        # Get discovery API to fetch current market intelligence
+        discovery_base = "https://alphastack-discovery.onrender.com"
+        enhanced_positions = []
+
+        with httpx.Client(timeout=10) as client:
+            for position in base_positions:
+                symbol = position.symbol
+                enhanced_pos = position.dict()
+
+                try:
+                    # Get current market data for the symbol via discovery system
+                    # This gives us current RVOL, accumulation score, and signals
+                    discovery_response = client.get(f"{discovery_base}/signals/current/{symbol}")
+
+                    if discovery_response.status_code == 200:
+                        discovery_data = discovery_response.json()
+                        enhanced_pos.update({
+                            "current_rvol": discovery_data.get("rvol", "N/A"),
+                            "current_score": discovery_data.get("accumulation_score", "N/A"),
+                            "current_signals": discovery_data.get("signals", []),
+                            "discovery_context": {
+                                "status": "ACTIVE" if discovery_data.get("rvol", 0) > 1.3 else "DORMANT",
+                                "strength": "HIGH" if discovery_data.get("accumulation_score", 0) > 70 else "MODERATE"
+                            }
+                        })
+                    else:
+                        # Fallback - position not in current discovery results
+                        enhanced_pos.update({
+                            "current_rvol": "N/A",
+                            "current_score": "N/A",
+                            "current_signals": [],
+                            "discovery_context": {
+                                "status": "NOT_TRACKED",
+                                "strength": "UNKNOWN"
+                            }
+                        })
+
+                except Exception as e:
+                    logger.warning(f"Failed to get discovery data for {symbol}: {e}")
+                    enhanced_pos.update({
+                        "current_rvol": "ERROR",
+                        "current_score": "ERROR",
+                        "current_signals": [],
+                        "discovery_context": {
+                            "status": "ERROR",
+                            "strength": "UNKNOWN"
+                        }
+                    })
+
+                # Add risk management recommendations
+                unrealized_pl_pct = position.unrealized_plpc * 100
+                enhanced_pos["risk_assessment"] = {
+                    "stop_loss_suggestion": position.avg_entry_price * 0.90,  # 10% stop loss
+                    "take_profit_suggestion": position.avg_entry_price * 1.20,  # 20% take profit
+                    "risk_level": "HIGH" if unrealized_pl_pct < -15 else ("MODERATE" if unrealized_pl_pct < -5 else "LOW"),
+                    "action_needed": unrealized_pl_pct < -20  # Flag major losses
+                }
+
+                # Add time-based insights
+                enhanced_pos["insights"] = []
+                if unrealized_pl_pct < -10:
+                    enhanced_pos["insights"].append(f"Position down {unrealized_pl_pct:.1f}% - consider stop loss")
+                if enhanced_pos.get("current_rvol", 0) and enhanced_pos["current_rvol"] != "N/A" and float(enhanced_pos["current_rvol"]) > 2.0:
+                    enhanced_pos["insights"].append("High volume activity detected - monitor closely")
+                if enhanced_pos["discovery_context"]["status"] == "DORMANT":
+                    enhanced_pos["insights"].append("Discovery signals weakening - reassess position")
+
+                enhanced_positions.append(enhanced_pos)
+
+        return enhanced_positions
+
+    except Exception as e:
+        logger.error(f"Error getting enhanced positions: {e}")
+        # Fallback to basic positions if enhancement fails
+        return get_positions()
+
 @app.get("/recommendations")
 def get_ai_recommendations():
-    """Get AI-powered portfolio recommendations"""
+    """Get AI-powered portfolio recommendations based on current positions and discovery system"""
     try:
-        # This would integrate with the discovery system and Claude AI
-        # For now, return a placeholder
-        return {
-            "recommendations": [
-                {
-                    "action": "HOLD",
-                    "message": "Portfolio is well-balanced. Continue monitoring market conditions.",
-                    "confidence": 85,
-                    "timestamp": datetime.now().isoformat()
+        positions = get_positions()
+
+        if not positions:
+            return {
+                "recommendations": [
+                    {
+                        "action": "DISCOVER",
+                        "message": "No current positions. Use discovery system to find explosive opportunities.",
+                        "confidence": 95,
+                        "timestamp": datetime.now().isoformat()
+                    }
+                ],
+                "risk_assessment": {
+                    "level": "LOW",
+                    "factors": ["No positions", "No market exposure"],
+                    "suggestions": ["Start with small position sizes from discovery system"]
                 }
-            ],
+            }
+
+        # Analyze current positions
+        total_loss_positions = sum(1 for p in positions if p.unrealized_pl < 0)
+        avg_loss_pct = sum(p.unrealized_plpc for p in positions if p.unrealized_plpc < 0) / max(total_loss_positions, 1) * 100
+
+        recommendations = []
+        risk_factors = []
+        suggestions = []
+
+        # Position-specific recommendations
+        for position in positions:
+            loss_pct = position.unrealized_plpc * 100
+            if loss_pct < -20:
+                recommendations.append({
+                    "action": "URGENT_REVIEW",
+                    "message": f"{position.symbol} down {loss_pct:.1f}% - immediate attention needed",
+                    "confidence": 90,
+                    "symbol": position.symbol
+                })
+            elif loss_pct < -10:
+                recommendations.append({
+                    "action": "MONITOR",
+                    "message": f"{position.symbol} down {loss_pct:.1f}% - consider stop loss",
+                    "confidence": 75,
+                    "symbol": position.symbol
+                })
+
+        # Overall portfolio recommendations
+        if total_loss_positions > len(positions) * 0.7:  # >70% losing positions
+            recommendations.append({
+                "action": "REASSESS",
+                "message": "High percentage of losing positions - review discovery system effectiveness",
+                "confidence": 85
+            })
+            risk_factors.append("High loss rate across portfolio")
+            suggestions.append("Reduce position sizes until discovery accuracy improves")
+
+        # Risk level determination
+        if avg_loss_pct < -15:
+            risk_level = "HIGH"
+            suggestions.append("Consider implementing stricter stop losses")
+        elif avg_loss_pct < -5:
+            risk_level = "MODERATE"
+            suggestions.append("Monitor positions closely for reversal signals")
+        else:
+            risk_level = "LOW"
+            suggestions.append("Continue current strategy with position monitoring")
+
+        if not recommendations:
+            recommendations.append({
+                "action": "HOLD",
+                "message": "Portfolio performing within acceptable parameters",
+                "confidence": 80,
+                "timestamp": datetime.now().isoformat()
+            })
+
+        return {
+            "recommendations": recommendations,
             "risk_assessment": {
-                "level": "MODERATE",
-                "factors": ["Market volatility", "Position concentration"],
-                "suggestions": ["Consider rebalancing if any position exceeds 20%"]
+                "level": risk_level,
+                "factors": risk_factors or ["Normal market volatility"],
+                "suggestions": suggestions
+            },
+            "portfolio_stats": {
+                "total_positions": len(positions),
+                "losing_positions": total_loss_positions,
+                "avg_loss_pct": round(avg_loss_pct, 2) if total_loss_positions > 0 else 0
             }
         }
 
@@ -451,19 +604,70 @@ def portfolio_recommendations():
     """Portfolio recommendations - frontend expects /portfolio/recommendations"""
     return get_ai_recommendations()
 
+@app.get("/portfolio/enhanced")
+def portfolio_enhanced():
+    """Enhanced portfolio positions with discovery context"""
+    return get_enhanced_positions()
+
 @app.get("/portfolio/alerts")
 def portfolio_alerts():
-    """Portfolio alerts - placeholder endpoint"""
-    return {
-        "alerts": [
-            {
-                "id": 1,
+    """Portfolio alerts based on current positions and market conditions"""
+    try:
+        positions = get_positions()
+        alerts = []
+        alert_id = 1
+
+        # Generate alerts based on position performance
+        for position in positions:
+            loss_pct = position.unrealized_plpc * 100
+
+            if loss_pct < -20:
+                alerts.append({
+                    "id": alert_id,
+                    "type": "CRITICAL",
+                    "symbol": position.symbol,
+                    "message": f"{position.symbol} down {loss_pct:.1f}% - urgent review required",
+                    "timestamp": datetime.now().isoformat(),
+                    "action_required": True
+                })
+                alert_id += 1
+
+            elif loss_pct < -10:
+                alerts.append({
+                    "id": alert_id,
+                    "type": "WARNING",
+                    "symbol": position.symbol,
+                    "message": f"{position.symbol} down {loss_pct:.1f}% - monitor closely",
+                    "timestamp": datetime.now().isoformat(),
+                    "action_required": False
+                })
+                alert_id += 1
+
+        # Add system status alert
+        if not alerts:
+            alerts.append({
+                "id": alert_id,
                 "type": "INFO",
-                "message": "Portfolio system is operational",
-                "timestamp": datetime.now().isoformat()
-            }
-        ]
-    }
+                "message": "All positions performing within normal parameters",
+                "timestamp": datetime.now().isoformat(),
+                "action_required": False
+            })
+
+        return {"alerts": alerts}
+
+    except Exception as e:
+        logger.error(f"Error generating alerts: {e}")
+        return {
+            "alerts": [
+                {
+                    "id": 1,
+                    "type": "ERROR",
+                    "message": f"Error generating alerts: {str(e)}",
+                    "timestamp": datetime.now().isoformat(),
+                    "action_required": True
+                }
+            ]
+        }
 
 @app.get("/test-auth")
 def test_auth_endpoint():
