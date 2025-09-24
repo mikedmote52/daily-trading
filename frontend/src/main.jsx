@@ -332,6 +332,7 @@ function Portfolio({ onRefresh }) {
                         fontWeight: "bold"
                       }}>
                         {position.unrealized_pl >= 0 ? '+' : ''}${Number(position.unrealized_pl || 0).toFixed(2)}
+                        ({position.unrealized_plpc >= 0 ? '+' : ''}{(position.unrealized_plpc * 100).toFixed(1)}%)
                       </span>
                     </div>
 
@@ -342,7 +343,7 @@ function Portfolio({ onRefresh }) {
                       </div>
                       <div>
                         <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 2 }}>Avg Cost</div>
-                        <div style={{ fontSize: 14, fontWeight: "bold" }}>${Number(position.avg_cost || 0).toFixed(2)}</div>
+                        <div style={{ fontSize: 14, fontWeight: "bold" }}>${Number(position.avg_entry_price || position.avg_cost || 0).toFixed(2)}</div>
                       </div>
                       <div>
                         <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 2 }}>Current Price</div>
@@ -351,6 +352,65 @@ function Portfolio({ onRefresh }) {
                       <div>
                         <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 2 }}>Market Value</div>
                         <div style={{ fontSize: 14, fontWeight: "bold" }}>${Number(position.market_value || 0).toFixed(2)}</div>
+                      </div>
+                    </div>
+
+                    {/* Discovery Context and Decision Support */}
+                    <div style={{ marginTop: 12, padding: 10, background: "rgba(0,0,0,0.3)", borderRadius: 6 }}>
+                      <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+                        {/* Entry Thesis */}
+                        <div style={{ flex: 1 }}>
+                          <div style={{ color: "#94a3b8", fontSize: 10, marginBottom: 2 }}>Discovery Thesis</div>
+                          <div style={{ fontSize: 11, color: "#10b981" }}>
+                            {position.discovery_thesis || "Pre-explosion accumulation pattern"}
+                          </div>
+                        </div>
+
+                        {/* Risk Status */}
+                        <div>
+                          <div style={{ color: "#94a3b8", fontSize: 10, marginBottom: 2 }}>Risk Level</div>
+                          <span style={{
+                            padding: "2px 6px",
+                            borderRadius: 3,
+                            fontSize: 10,
+                            fontWeight: "bold",
+                            background: position.unrealized_plpc < -0.20 ? "#dc2626" :
+                                      position.unrealized_plpc < -0.10 ? "#f59e0b" : "#10b981",
+                            color: "white"
+                          }}>
+                            {position.unrealized_plpc < -0.20 ? "HIGH RISK" :
+                             position.unrealized_plpc < -0.10 ? "MODERATE" : "NORMAL"}
+                          </span>
+                        </div>
+
+                        {/* Action Recommendation */}
+                        <div style={{ flex: 1 }}>
+                          <div style={{ color: "#94a3b8", fontSize: 10, marginBottom: 2 }}>Action</div>
+                          <div style={{ fontSize: 11, fontWeight: "bold",
+                                       color: position.unrealized_plpc < -0.20 ? "#dc2626" :
+                                             position.unrealized_plpc < -0.10 ? "#f59e0b" :
+                                             position.unrealized_plpc < 0 ? "#94a3b8" : "#10b981" }}>
+                            {position.unrealized_plpc < -0.20 ? "⚠️ Review Exit Strategy" :
+                             position.unrealized_plpc < -0.10 ? "📊 Monitor Closely" :
+                             position.unrealized_plpc < -0.05 ? "💎 Hold - Pattern Active" :
+                             position.unrealized_plpc < 0 ? "🔄 Buy-the-Dip Opportunity" :
+                             "✅ On Track"}
+                          </div>
+                        </div>
+
+                        {/* Stop Loss / Target */}
+                        <div>
+                          <div style={{ color: "#94a3b8", fontSize: 10, marginBottom: 2 }}>Stop/Target</div>
+                          <div style={{ fontSize: 10 }}>
+                            <span style={{ color: "#dc2626" }}>
+                              ${(position.avg_entry_price * 0.90).toFixed(2)}
+                            </span>
+                            {" / "}
+                            <span style={{ color: "#10b981" }}>
+                              ${(position.avg_entry_price * 1.20).toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
