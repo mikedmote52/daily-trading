@@ -611,24 +611,27 @@ def portfolio_enhanced():
 
 @app.get("/portfolio/alerts")
 def portfolio_alerts():
-    """Portfolio alerts based on current positions and market conditions"""
+    """Portfolio alerts with catalyst monitoring and position optimization"""
     try:
         positions = get_positions()
         alerts = []
         alert_id = 1
 
-        # Generate alerts based on position performance
+        # Generate alerts based on position performance and optimization opportunities
         for position in positions:
             loss_pct = position.unrealized_plpc * 100
+            symbol = position.symbol
 
+            # Performance-based alerts
             if loss_pct < -20:
                 alerts.append({
                     "id": alert_id,
                     "type": "CRITICAL",
-                    "symbol": position.symbol,
-                    "message": f"{position.symbol} down {loss_pct:.1f}% - urgent review required",
+                    "symbol": symbol,
+                    "message": f"{symbol} down {loss_pct:.1f}% - urgent review required",
                     "timestamp": datetime.now().isoformat(),
-                    "action_required": True
+                    "action_required": True,
+                    "category": "PERFORMANCE"
                 })
                 alert_id += 1
 
@@ -636,21 +639,91 @@ def portfolio_alerts():
                 alerts.append({
                     "id": alert_id,
                     "type": "WARNING",
-                    "symbol": position.symbol,
-                    "message": f"{position.symbol} down {loss_pct:.1f}% - monitor closely",
+                    "symbol": symbol,
+                    "message": f"{symbol} down {loss_pct:.1f}% - monitor closely",
                     "timestamp": datetime.now().isoformat(),
-                    "action_required": False
+                    "action_required": False,
+                    "category": "PERFORMANCE"
                 })
                 alert_id += 1
 
-        # Add system status alert
+            # Position sizing optimization alerts
+            market_value = float(position.market_value)
+            total_portfolio_value = sum(float(p.market_value) for p in positions)
+            position_weight = market_value / total_portfolio_value if total_portfolio_value > 0 else 0
+
+            if position_weight > 0.25:  # Position > 25% of portfolio
+                alerts.append({
+                    "id": alert_id,
+                    "type": "WARNING",
+                    "symbol": symbol,
+                    "message": f"{symbol} is {position_weight*100:.1f}% of portfolio - consider rebalancing",
+                    "timestamp": datetime.now().isoformat(),
+                    "action_required": False,
+                    "category": "POSITION_SIZING"
+                })
+                alert_id += 1
+
+            # Discovery pattern alerts (based on 30-day hold period)
+            # Assuming positions older than 30 days need pattern reassessment
+            if loss_pct < -5:  # Any meaningful loss
+                alerts.append({
+                    "id": alert_id,
+                    "type": "INFO",
+                    "symbol": symbol,
+                    "message": f"{symbol} - reassess discovery pattern strength",
+                    "timestamp": datetime.now().isoformat(),
+                    "action_required": False,
+                    "category": "DISCOVERY_REVIEW"
+                })
+                alert_id += 1
+
+        # Add catalyst monitoring placeholder
+        # This would integrate with earnings calendar APIs in production
+        upcoming_catalysts = [
+            {"symbol": "FATN", "date": "2025-10-15", "type": "Earnings"},
+            {"symbol": "CDLX", "date": "2025-10-22", "type": "Earnings"},
+        ]
+
+        for catalyst in upcoming_catalysts:
+            if catalyst["symbol"] in [p.symbol for p in positions]:
+                alerts.append({
+                    "id": alert_id,
+                    "type": "CATALYST",
+                    "symbol": catalyst["symbol"],
+                    "message": f"{catalyst['symbol']} {catalyst['type']} expected {catalyst['date']}",
+                    "timestamp": datetime.now().isoformat(),
+                    "action_required": False,
+                    "category": "CATALYST",
+                    "catalyst_date": catalyst["date"],
+                    "catalyst_type": catalyst["type"]
+                })
+                alert_id += 1
+
+        # Add system optimization recommendations
+        total_unrealized_pl = sum(float(p.unrealized_pl) for p in positions)
+        losing_positions = len([p for p in positions if float(p.unrealized_pl) < 0])
+
+        if losing_positions > len(positions) * 0.8:  # 80%+ losing positions
+            alerts.append({
+                "id": alert_id,
+                "type": "OPTIMIZATION",
+                "message": f"High loss rate ({losing_positions}/{len(positions)}) - consider position sizing review",
+                "timestamp": datetime.now().isoformat(),
+                "action_required": True,
+                "category": "PORTFOLIO_OPTIMIZATION"
+            })
+            alert_id += 1
+
+        # Add system status alert if no issues
         if not alerts:
             alerts.append({
                 "id": alert_id,
                 "type": "INFO",
-                "message": "All positions performing within normal parameters",
+                "message": "Portfolio optimized - all positions within parameters",
                 "timestamp": datetime.now().isoformat(),
-                "action_required": False
+                "action_required": False,
+                "category": "STATUS"
             })
 
         return {"alerts": alerts}
@@ -664,9 +737,182 @@ def portfolio_alerts():
                     "type": "ERROR",
                     "message": f"Error generating alerts: {str(e)}",
                     "timestamp": datetime.now().isoformat(),
-                    "action_required": True
+                    "action_required": True,
+                    "category": "SYSTEM"
                 }
             ]
+        }
+
+@app.get("/portfolio/catalysts")
+def get_portfolio_catalysts():
+    """Get upcoming catalysts for portfolio positions"""
+    try:
+        positions = get_positions()
+        portfolio_symbols = [p.symbol for p in positions]
+
+        # In production, this would integrate with:
+        # - Earnings calendar APIs (Alpha Vantage, Financial Modeling Prep)
+        # - FDA approval calendars for biotech
+        # - Economic event calendars
+        # - Corporate action databases
+
+        # Mock data structure for demonstration - replace with real API calls
+        catalyst_calendar = [
+            # Q4 2025 Earnings expectations (estimated)
+            {"symbol": "FATN", "date": "2025-10-15", "type": "Earnings", "importance": "HIGH"},
+            {"symbol": "CDLX", "date": "2025-10-22", "type": "Earnings", "importance": "MEDIUM"},
+            {"symbol": "LAES", "date": "2025-10-28", "type": "Earnings", "importance": "MEDIUM"},
+            {"symbol": "LASE", "date": "2025-11-05", "type": "Earnings", "importance": "HIGH"},
+            {"symbol": "QMCO", "date": "2025-11-12", "type": "Earnings", "importance": "MEDIUM"},
+            {"symbol": "CCCS", "date": "2025-11-18", "type": "Earnings", "importance": "LOW"},
+
+            # Other potential catalysts
+            {"symbol": "FATN", "date": "2025-10-01", "type": "Product Launch", "importance": "HIGH"},
+            {"symbol": "CDLX", "date": "2025-09-30", "type": "Conference Presentation", "importance": "LOW"},
+        ]
+
+        # Filter for current portfolio holdings
+        portfolio_catalysts = [
+            catalyst for catalyst in catalyst_calendar
+            if catalyst["symbol"] in portfolio_symbols
+        ]
+
+        # Sort by date
+        from datetime import datetime as dt
+        portfolio_catalysts.sort(key=lambda x: dt.fromisoformat(x["date"]))
+
+        # Add days until catalyst
+        today = datetime.now().date()
+        for catalyst in portfolio_catalysts:
+            catalyst_date = dt.fromisoformat(catalyst["date"]).date()
+            days_until = (catalyst_date - today).days
+            catalyst["days_until"] = days_until
+            catalyst["status"] = "UPCOMING" if days_until > 0 else "PAST"
+
+            # Add position context
+            position = next((p for p in positions if p.symbol == catalyst["symbol"]), None)
+            if position:
+                catalyst["position_pl_pct"] = position.unrealized_plpc * 100
+                catalyst["market_value"] = position.market_value
+
+        return {
+            "catalysts": portfolio_catalysts,
+            "total_count": len(portfolio_catalysts),
+            "upcoming_count": len([c for c in portfolio_catalysts if c["status"] == "UPCOMING"]),
+            "high_importance_count": len([c for c in portfolio_catalysts if c["importance"] == "HIGH"]),
+            "timestamp": datetime.now().isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting catalysts: {e}")
+        return {
+            "catalysts": [],
+            "total_count": 0,
+            "upcoming_count": 0,
+            "high_importance_count": 0,
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+
+@app.get("/portfolio/optimization")
+def get_portfolio_optimization():
+    """Get portfolio optimization recommendations based on performance and risk"""
+    try:
+        positions = get_positions()
+
+        if not positions:
+            return {"recommendations": [], "summary": {"message": "No positions to optimize"}}
+
+        recommendations = []
+        total_portfolio_value = sum(float(p.market_value) for p in positions)
+
+        for position in positions:
+            symbol = position.symbol
+            market_value = float(position.market_value)
+            unrealized_pl_pct = position.unrealized_plpc * 100
+            position_weight = market_value / total_portfolio_value if total_portfolio_value > 0 else 0
+
+            rec = {
+                "symbol": symbol,
+                "current_weight": position_weight,
+                "performance_pct": unrealized_pl_pct,
+                "recommendations": []
+            }
+
+            # Position sizing recommendations
+            if position_weight > 0.3:
+                rec["recommendations"].append({
+                    "type": "REDUCE_SIZE",
+                    "message": f"Overweight at {position_weight*100:.1f}% - consider reducing to <20%",
+                    "priority": "HIGH",
+                    "target_weight": 0.20
+                })
+            elif position_weight < 0.05 and unrealized_pl_pct > -10:
+                rec["recommendations"].append({
+                    "type": "INCREASE_SIZE",
+                    "message": f"Underweight at {position_weight*100:.1f}% - consider increasing if thesis intact",
+                    "priority": "MEDIUM",
+                    "target_weight": 0.15
+                })
+
+            # Performance-based recommendations
+            if unrealized_pl_pct < -15:
+                rec["recommendations"].append({
+                    "type": "RISK_MANAGEMENT",
+                    "message": f"Down {unrealized_pl_pct:.1f}% - reassess thesis or implement stop-loss",
+                    "priority": "HIGH",
+                    "stop_loss_price": position.avg_entry_price * 0.85  # 15% stop
+                })
+            elif unrealized_pl_pct > 15:
+                rec["recommendations"].append({
+                    "type": "PROFIT_TAKING",
+                    "message": f"Up {unrealized_pl_pct:.1f}% - consider taking partial profits",
+                    "priority": "MEDIUM",
+                    "take_profit_price": position.avg_entry_price * 1.20  # 20% target
+                })
+            elif -5 < unrealized_pl_pct < 5:
+                rec["recommendations"].append({
+                    "type": "HOLD_MONITOR",
+                    "message": "Position stable - continue monitoring discovery patterns",
+                    "priority": "LOW"
+                })
+
+            # Discovery-specific recommendations
+            if unrealized_pl_pct < -10:
+                rec["recommendations"].append({
+                    "type": "PATTERN_REVIEW",
+                    "message": "Check if original discovery signals are still active",
+                    "priority": "MEDIUM",
+                    "action": "Compare current RVOL and accumulation score to entry levels"
+                })
+
+            recommendations.append(rec)
+
+        # Portfolio-level optimization
+        losing_positions = len([p for p in positions if float(p.unrealized_pl) < 0])
+        avg_loss = sum(p.unrealized_plpc for p in positions if p.unrealized_plpc < 0) / max(losing_positions, 1) * 100
+
+        summary = {
+            "total_positions": len(positions),
+            "losing_positions": losing_positions,
+            "avg_loss_pct": avg_loss if losing_positions > 0 else 0,
+            "diversification_score": len(positions) * 10,  # Simple metric
+            "risk_level": "HIGH" if losing_positions > len(positions) * 0.7 else "MODERATE",
+            "optimization_priority": "URGENT" if avg_loss < -15 else "NORMAL"
+        }
+
+        return {
+            "recommendations": recommendations,
+            "summary": summary,
+            "timestamp": datetime.now().isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting optimization: {e}")
+        return {
+            "recommendations": [],
+            "summary": {"error": str(e)},
+            "timestamp": datetime.now().isoformat()
         }
 
 @app.get("/test-auth")

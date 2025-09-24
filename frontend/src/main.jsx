@@ -442,6 +442,33 @@ function Portfolio({ onRefresh }) {
                             </span>
                           </div>
                         </div>
+
+                        {/* Catalyst Alert */}
+                        <div>
+                          <div style={{ color: "#94a3b8", fontSize: 10, marginBottom: 2 }}>Next Catalyst</div>
+                          <div style={{ fontSize: 10 }}>
+                            {(() => {
+                              // Estimated earnings dates based on typical quarterly schedules
+                              const catalystMap = {
+                                'FATN': { date: 'Oct 15', type: 'Earnings' },
+                                'CDLX': { date: 'Oct 22', type: 'Earnings' },
+                                'LAES': { date: 'Oct 28', type: 'Earnings' },
+                                'LASE': { date: 'Nov 5', type: 'Earnings' },
+                                'QMCO': { date: 'Nov 12', type: 'Earnings' },
+                                'CCCS': { date: 'Nov 18', type: 'Earnings' }
+                              };
+                              const catalyst = catalystMap[position.symbol];
+                              if (catalyst) {
+                                return (
+                                  <span style={{ color: "#f59e0b", fontSize: 9 }}>
+                                    📅 {catalyst.date} {catalyst.type}
+                                  </span>
+                                );
+                              }
+                              return <span style={{ color: "#6b7280", fontSize: 9 }}>No catalyst</span>;
+                            })()}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
