@@ -371,37 +371,43 @@ class UniversalDiscoverySystem:
                     else:
                         stealth_score = 5   # Minimal pattern
 
-                # 2. SMALL CAP EXPLOSIVE POTENTIAL (30% weight)
+                # 2. SMALL CAP EXPLOSIVE POTENTIAL (25% weight) - Rebalanced
                 # Lower priced stocks have bigger explosion potential (like your winners)
                 size_score = 0
-                if price <= 10:      size_score = 30    # Highest explosion potential
-                elif price <= 25:   size_score = 25    # Good potential
-                elif price <= 50:   size_score = 20    # Moderate potential
-                elif price <= 100:  size_score = 10    # Limited upside
+                if price <= 5:       size_score = 25    # Ultra small cap (highest potential)
+                elif price <= 10:   size_score = 20    # Small cap
+                elif price <= 20:   size_score = 15    # Mid-small cap
+                elif price <= 50:   size_score = 10    # Moderate potential
+                elif price <= 100:  size_score = 5     # Limited upside
 
                 # 3. COILING PATTERN BONUS (20% weight)
                 # Low volatility with building volume = pressure building
                 coiling_bonus = 0
                 if rvol >= 1.5 and abs_change <= 2.0:
-                    coiling_bonus = 20  # Perfect coiling - high volume, low movement
+                    coiling_bonus = 15  # Perfect coiling - high volume, low movement
                 elif rvol >= 1.3 and abs_change <= 1.5:
-                    coiling_bonus = 15  # Good coiling pattern
+                    coiling_bonus = 10  # Good coiling pattern
                 elif rvol >= 1.2 and abs_change <= 1.0:
-                    coiling_bonus = 10  # Early coiling
+                    coiling_bonus = 5   # Early coiling
 
-                # 4. VOLUME QUALITY BONUS (10% weight)
+                # 4. VOLUME QUALITY BONUS (15% weight) - Increased importance
                 # Reward exceptional volume patterns
                 volume_quality = 0
-                if rvol >= 3.0:      volume_quality = 10   # Exceptional volume
-                elif rvol >= 2.5:   volume_quality = 8    # Very high volume
-                elif rvol >= 2.0:   volume_quality = 6    # High volume
-                elif rvol >= 1.5:   volume_quality = 4    # Good volume
+                if rvol >= 3.0:      volume_quality = 15   # Exceptional volume
+                elif rvol >= 2.5:   volume_quality = 12   # Very high volume
+                elif rvol >= 2.0:   volume_quality = 10   # High volume
+                elif rvol >= 1.5:   volume_quality = 8    # Good volume
+                elif rvol >= 1.3:   volume_quality = 5    # Above average volume
 
                 total_score = stealth_score + size_score + coiling_bonus + volume_quality
 
-                # Penalty for stocks that already exploded (we're too late)
+                # Penalty for stocks that already exploded or have extreme volume (we might be late)
                 if abs_change > 8.0:
                     total_score *= 0.5  # Cut score in half for exploded stocks
+                elif rvol > 20.0:  # Extreme volume might indicate we're late to the party
+                    total_score *= 0.8  # Small penalty for extreme volume
+                elif rvol > 10.0:  # Very high volume
+                    total_score *= 0.9  # Tiny penalty
 
                 # Set RVOL for display in UI
                 if 'rvol' not in row or row.get('rvol', 1.0) == 1.0:
@@ -422,7 +428,16 @@ class UniversalDiscoverySystem:
                 logger.info(f"   ⚡ Processed {idx}/{len(filtered_df)} stocks...")
 
             row_dict = row.to_dict()
-            row_dict['accumulation_score'] = calculate_pre_explosion_score(row)
+            # Calculate score and get RVOL from the scoring function
+            score_result = calculate_pre_explosion_score(row)
+            row_dict['accumulation_score'] = score_result
+
+            # Ensure RVOL is properly set from the scoring function
+            if 'rvol' not in row_dict or row_dict.get('rvol', 1.0) == 1.0:
+                # Recalculate RVOL for display
+                rvol = self._estimate_smart_rvol(row_dict['symbol'], row_dict['volume'], row_dict['price'], market_volume_stats)
+                row_dict['rvol'] = round(rvol, 2)
+
             scored_data.append(row_dict)
 
         filtered_df = pd.DataFrame(scored_data)
