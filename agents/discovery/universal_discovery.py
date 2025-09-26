@@ -17,6 +17,15 @@ from dataclasses import dataclass
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('UniversalDiscovery')
 
+# Enhanced scoring utility functions
+def sigmoid(x):
+    """Sigmoid function for smooth scoring curves"""
+    return 1 / (1 + np.exp(-x))
+
+def zclip(x, lo=0.0, hi=1.0):
+    """Clip value to range [lo, hi]"""
+    return max(lo, min(hi, x))
+
 # DIRECT POLYGON API - ZERO MOCK DATA, PREMIUM FEATURES GUARANTEED
 from direct_api_functions import call_direct_api, DIRECT_API_FUNCTIONS
 
@@ -58,6 +67,10 @@ class GateConfig:
     MAX_MARKET_CAP = 50e9
     SUSTAINED_MINUTES = 30
     SUSTAINED_THRESH = 3.0
+
+    # Enhanced scoring features
+    ENHANCED_SCORING = True   # Enable granular scoring and premium data enrichment
+    ENRICHMENT_LIMIT = 30     # Top N candidates to enrich with premium data
 
 class UniversalDiscoverySystem:
     def __init__(self):
@@ -224,6 +237,316 @@ class UniversalDiscoverySystem:
 
         return enhanced_df
 
+    def _enrich_with_premium_data(self, top_df: pd.DataFrame) -> pd.DataFrame:
+        """Enrich top candidates with premium Polygon data (market cap, float, short interest)"""
+        enriched_df = top_df.copy()
+        limit = min(GateConfig.ENRICHMENT_LIMIT, len(top_df))
+
+        logger.info(f"💎 Enriching top {limit} candidates with premium Polygon data...")
+
+        for idx, (_, row) in enumerate(top_df.head(limit).iterrows()):
+            try:
+                symbol = row['symbol']
+                start_time = time.time()
+
+                # Get ticker details for market cap and fundamentals
+                try:
+                    details_response = _call_polygon_api('mcp__polygon__get_ticker_details', ticker=symbol)
+                    if details_response.get('status') == 'OK' and details_response.get('results'):
+                        details = details_response['results']
+
+                        # Market cap and shares data
+                        market_cap = details.get('market_cap', 0)
+                        shares_outstanding = details.get('weighted_shares_outstanding', 0)
+
+                        enriched_df.at[row.name, 'market_cap'] = market_cap
+                        enriched_df.at[row.name, 'shares_outstanding'] = shares_outstanding
+                        enriched_df.at[row.name, 'company_name'] = details.get('name', '')
+                        enriched_df.at[row.name, 'sector'] = details.get('sic_description', '')
+
+                        # Calculate float metrics
+                        if market_cap > 0 and row['price'] > 0:
+                            estimated_float = shares_outstanding * 0.85  # Estimate ~85% is float
+                            float_value = estimated_float * row['price']
+                            enriched_df.at[row.name, 'float_value'] = float_value
+                            enriched_df.at[row.name, 'float_size'] = 'Small' if float_value < 500e6 else 'Large'
+
+                        logger.debug(f"✅ {symbol}: Market cap ${market_cap/1e6:.1f}M, Shares {shares_outstanding/1e6:.1f}M")
+
+                except Exception as e:
+                    logger.debug(f"⚠️ Ticker details failed for {symbol}: {e}")
+                    enriched_df.at[row.name, 'market_cap'] = 0
+                    enriched_df.at[row.name, 'shares_outstanding'] = 0
+                    enriched_df.at[row.name, 'company_name'] = ''
+                    enriched_df.at[row.name, 'sector'] = ''
+                    enriched_df.at[row.name, 'float_value'] = 0
+                    enriched_df.at[row.name, 'float_size'] = 'Unknown'
+
+                # Get short interest data (premium feature)
+                try:
+                    short_response = _call_polygon_api('mcp__polygon__list_short_interest', ticker=symbol, limit=1)
+                    if short_response.get('status') == 'OK' and short_response.get('results'):
+                        short_data = short_response['results'][0]
+                        short_interest = short_data.get('short_interest', 0)
+                        avg_daily_volume = short_data.get('avg_daily_volume', 0)
+                        days_to_cover = short_data.get('days_to_cover', 0)
+
+                        enriched_df.at[row.name, 'short_interest'] = short_interest
+                        enriched_df.at[row.name, 'days_to_cover'] = days_to_cover
+                        enriched_df.at[row.name, 'short_squeeze_potential'] = 'High' if days_to_cover > 5 else 'Low'
+
+                        logger.debug(f"✅ {symbol}: Short interest {short_interest:,}, DTC {days_to_cover:.1f}")
+
+                except Exception as e:
+                    logger.debug(f"⚠️ Short interest failed for {symbol}: {e}")
+                    enriched_df.at[row.name, 'short_interest'] = 0
+                    enriched_df.at[row.name, 'days_to_cover'] = 0
+
+                # Timeout protection
+                elapsed = time.time() - start_time
+                if elapsed > 3.0:  # 3 second per stock limit
+                    logger.info(f"⏰ Premium data timeout protection: stopping at {idx+1}/{limit}")
+                    break
+
+            except Exception as e:
+                logger.debug(f"⚠️ Premium enrichment failed for {row['symbol']}: {e}")
+                continue
+
+        # Calculate enrichment success rate
+        enriched_count = len(enriched_df[enriched_df['market_cap'] > 0])
+        success_rate = (enriched_count / limit) * 100 if limit > 0 else 0
+        logger.info(f"💎 Premium data enrichment complete: {enriched_count}/{limit} stocks ({success_rate:.1f}%)")
+
+        return enriched_df
+
+    def _apply_quality_gates(self, candidates_df: pd.DataFrame, target_count: int = 10) -> pd.DataFrame:
+        """Apply adaptive quality gates to show only cream-of-the-crop stocks"""
+        logger.info(f"🎯 Phase 3: Applying quality gates for cream-of-the-crop selection...")
+
+        # Start with all candidates
+        gated_df = candidates_df.copy()
+        original_count = len(gated_df)
+
+        # Quality Gate 1: Minimum RVOL threshold (institutional interest)
+        min_rvol = 1.5  # Start conservative
+        while len(gated_df) > target_count * 2 and min_rvol < 5.0:
+            temp_df = gated_df[gated_df['rvol'] >= min_rvol]
+            if len(temp_df) >= target_count:
+                gated_df = temp_df
+                logger.info(f"   ✅ RVOL Gate: {min_rvol:.1f}x+ -> {len(gated_df)} stocks")
+                min_rvol += 0.25
+            else:
+                break
+
+        # Quality Gate 2: Score threshold (only high-scoring patterns)
+        score_percentile = 80  # Start at 80th percentile
+        while len(gated_df) > target_count * 1.5 and score_percentile < 95:
+            score_threshold = gated_df['accumulation_score'].quantile(score_percentile / 100.0)
+            temp_df = gated_df[gated_df['accumulation_score'] >= score_threshold]
+            if len(temp_df) >= target_count:
+                gated_df = temp_df
+                logger.info(f"   ✅ Score Gate: {score_threshold:.1f}+ -> {len(gated_df)} stocks")
+                score_percentile += 5
+            else:
+                break
+
+        # Quality Gate 3: Volume quality (eliminate low-volume noise)
+        min_volume = 500000  # 500K minimum
+        volume_filtered = gated_df[gated_df['volume'] >= min_volume]
+        if len(volume_filtered) >= min(target_count, len(gated_df) // 2):
+            gated_df = volume_filtered
+            logger.info(f"   ✅ Volume Gate: {min_volume:,}+ shares -> {len(gated_df)} stocks")
+
+        # Quality Gate 4: Price efficiency (avoid extreme penny stocks)
+        price_filtered = gated_df[gated_df['price'] >= 1.0]  # $1+ for tradability
+        if len(price_filtered) >= min(target_count, len(gated_df) // 2):
+            gated_df = price_filtered
+            logger.info(f"   ✅ Price Gate: $1.00+ -> {len(gated_df)} stocks")
+
+        # Quality Gate 5: Movement reasonableness (avoid already-exploded stocks)
+        change_filtered = gated_df[gated_df['change_pct'].abs() <= 8.0]  # Not already exploded
+        if len(change_filtered) >= min(target_count, len(gated_df) // 2):
+            gated_df = change_filtered
+            logger.info(f"   ✅ Change Gate: ±8% max -> {len(gated_df)} stocks")
+
+        # Final sort by accumulation score to get the absolute best
+        gated_df = gated_df.nlargest(target_count, 'accumulation_score')
+
+        filtered_count = original_count - len(gated_df)
+        logger.info(f"🎯 Quality gates complete: {len(gated_df)}/{original_count} stocks (filtered {filtered_count} lower-quality candidates)")
+
+        return gated_df
+
+    def _generate_dynamic_reasons(self, row: pd.Series) -> List[str]:
+        """Generate specific, data-driven reasons for each stock candidate"""
+        reasons = []
+
+        symbol = row['symbol']
+        price = row['price']
+        volume = row['volume']
+        change_pct = row['change_pct']
+        rvol = row.get('rvol', 1.0)
+        score = row['accumulation_score']
+
+        # Volume-based reasons (most important for pre-explosion detection)
+        if rvol >= 8.0:
+            reasons.append(f"Exceptional {rvol:.1f}x volume surge indicates major institutional activity")
+        elif rvol >= 5.0:
+            reasons.append(f"Strong {rvol:.1f}x volume increase shows growing institutional interest")
+        elif rvol >= 3.0:
+            reasons.append(f"Significant {rvol:.1f}x volume spike suggests accumulation pattern")
+        elif rvol >= 2.0:
+            reasons.append(f"Elevated {rvol:.1f}x volume indicates potential breakout setup")
+        elif rvol >= 1.5:
+            reasons.append(f"Above-average {rvol:.1f}x volume shows early accumulation signs")
+
+        # Stealth accumulation (volume + price stability)
+        abs_change = abs(change_pct)
+        if rvol >= 2.0 and abs_change <= 2.0:
+            reasons.append(f"Perfect stealth pattern: {rvol:.1f}x volume with only {abs_change:.1f}% price movement")
+        elif rvol >= 1.5 and abs_change <= 1.5:
+            reasons.append(f"Classic accumulation: {rvol:.1f}x volume while price stable at ±{abs_change:.1f}%")
+
+        # Price-based explosion potential
+        if price <= 3.0:
+            reasons.append(f"Ultra-low ${price:.2f} price offers maximum explosion potential (300%+ possible)")
+        elif price <= 5.0:
+            reasons.append(f"Low ${price:.2f} price provides high explosion potential (200%+ possible)")
+        elif price <= 10.0:
+            reasons.append(f"Small-cap ${price:.2f} price offers good explosion potential (100%+ possible)")
+        elif price <= 20.0:
+            reasons.append(f"Mid-small ${price:.2f} price has moderate explosion potential (50%+ possible)")
+
+        # Volume quality assessment
+        volume_m = volume / 1e6
+        if volume_m >= 5.0:
+            reasons.append(f"High {volume_m:.1f}M share volume ensures excellent liquidity")
+        elif volume_m >= 2.0:
+            reasons.append(f"Strong {volume_m:.1f}M share volume provides good liquidity")
+        elif volume_m >= 1.0:
+            reasons.append(f"Solid {volume_m:.1f}M share volume offers adequate liquidity")
+        elif volume >= 500000:
+            reasons.append(f"Decent {volume_m:.1f}M share volume meets minimum liquidity requirements")
+
+        # Score-based confidence levels
+        if score >= 85.0:
+            reasons.append(f"Exceptional {score:.1f}/100 accumulation score indicates high explosion probability")
+        elif score >= 75.0:
+            reasons.append(f"Strong {score:.1f}/100 accumulation score shows good explosion potential")
+        elif score >= 65.0:
+            reasons.append(f"Solid {score:.1f}/100 accumulation score suggests moderate explosion potential")
+
+        # Movement context
+        if change_pct > 0:
+            reasons.append(f"Currently trending up {change_pct:.1f}% indicating positive momentum")
+        elif change_pct < -2.0:
+            reasons.append(f"Recent {abs(change_pct):.1f}% dip may represent accumulation opportunity")
+        elif abs(change_pct) <= 1.0:
+            reasons.append(f"Price stability (±{abs_change:.1f}%) suggests controlled accumulation")
+
+        # Premium data insights (if available)
+        market_cap = row.get('market_cap', 0)
+        if market_cap and market_cap > 0:
+            market_cap_m = market_cap / 1e6
+            if market_cap_m < 500:
+                reasons.append(f"Small ${market_cap_m:.0f}M market cap offers higher volatility potential")
+            elif market_cap_m < 2000:
+                reasons.append(f"Mid-cap ${market_cap_m:.0f}M market cap provides balanced risk/reward")
+
+        short_interest = row.get('short_interest', 0)
+        days_to_cover = row.get('days_to_cover', 0)
+        if short_interest > 0 and days_to_cover > 3:
+            reasons.append(f"High short interest with {days_to_cover:.1f} days to cover creates squeeze potential")
+
+        # If no specific reasons found, generate a fallback
+        if not reasons:
+            reasons.append(f"Accumulation pattern detected with {rvol:.1f}x volume at ${price:.2f}")
+
+        return reasons
+
+    def _calculate_explosion_probability(self, row: pd.Series) -> float:
+        """Calculate composite explosion probability percentage (0-100)"""
+
+        price = row['price']
+        volume = row['volume']
+        change_pct = row['change_pct']
+        rvol = row.get('rvol', 1.0)
+        score = row['accumulation_score']
+
+        # Start with normalized accumulation score (0.0 to 1.0)
+        base_probability = min(score / 100.0, 1.0)
+
+        # Volume multiplier (RVOL is key predictor)
+        if rvol >= 10.0:
+            volume_multiplier = 1.8  # Extreme volume = very high probability
+        elif rvol >= 5.0:
+            volume_multiplier = 1.6  # Strong volume
+        elif rvol >= 3.0:
+            volume_multiplier = 1.4  # Good volume
+        elif rvol >= 2.0:
+            volume_multiplier = 1.2  # Moderate volume
+        elif rvol >= 1.5:
+            volume_multiplier = 1.1  # Slight volume edge
+        else:
+            volume_multiplier = 0.9  # Below average volume
+
+        # Price explosion potential multiplier
+        if price <= 2.0:
+            price_multiplier = 1.5    # Ultra low price = maximum explosion potential
+        elif price <= 5.0:
+            price_multiplier = 1.3    # Low price = high explosion potential
+        elif price <= 10.0:
+            price_multiplier = 1.2    # Small cap = good explosion potential
+        elif price <= 20.0:
+            price_multiplier = 1.1    # Mid-small cap = moderate potential
+        else:
+            price_multiplier = 1.0    # Higher price = limited upside
+
+        # Stealth accumulation bonus (volume high, movement low)
+        abs_change = abs(change_pct)
+        if rvol >= 2.0 and abs_change <= 2.0:
+            stealth_bonus = 1.3  # Perfect stealth accumulation
+        elif rvol >= 1.5 and abs_change <= 1.5:
+            stealth_bonus = 1.2  # Good stealth pattern
+        elif rvol >= 1.3 and abs_change <= 1.0:
+            stealth_bonus = 1.1  # Early accumulation signs
+        else:
+            stealth_bonus = 1.0  # No clear stealth pattern
+
+        # Volume quality bonus
+        volume_m = volume / 1e6
+        if volume_m >= 5.0:
+            liquidity_bonus = 1.15   # Excellent liquidity
+        elif volume_m >= 2.0:
+            liquidity_bonus = 1.10   # Good liquidity
+        elif volume_m >= 1.0:
+            liquidity_bonus = 1.05   # Adequate liquidity
+        else:
+            liquidity_bonus = 1.0    # Standard liquidity
+
+        # Movement penalty (avoid stocks that already exploded)
+        if abs_change > 10.0:
+            movement_penalty = 0.5   # Already exploded
+        elif abs_change > 5.0:
+            movement_penalty = 0.8   # Significant movement
+        else:
+            movement_penalty = 1.0   # Reasonable movement
+
+        # Calculate composite explosion probability
+        explosion_probability = (
+            base_probability *
+            volume_multiplier *
+            price_multiplier *
+            stealth_bonus *
+            liquidity_bonus *
+            movement_penalty
+        )
+
+        # Convert to percentage and cap at reasonable maximum
+        probability_pct = min(explosion_probability * 100, 95.0)  # Cap at 95%
+
+        return round(probability_pct, 1)
+
     def get_mcp_filtered_universe(self) -> pd.DataFrame:
         """Get universe using direct Polygon API - GUARANTEED REAL DATA"""
         logger.info("🎯 Loading universe via direct Polygon API...")
@@ -346,58 +669,88 @@ class UniversalDiscoverySystem:
                 # Smart RVOL estimation without individual API calls
                 rvol = self._estimate_smart_rvol(symbol, current_volume, price, market_volume_stats)
 
-                # 1. STEALTH ACCUMULATION SCORE (40% weight) - KEY PATTERN
+                # 1. ENHANCED STEALTH ACCUMULATION SCORE (40% weight) - GRANULAR PRECISION
                 # High volume with minimal price movement = institutions accumulating quietly
-                stealth_score = 0
                 abs_change = abs(change_pct)
 
-                if rvol >= 2.0:  # Significant volume increase
-                    if abs_change <= 2.0:  # But minimal price movement
-                        stealth_score = 40  # PERFECT stealth accumulation
-                    elif abs_change <= 4.0:
-                        stealth_score = 30  # Good accumulation pattern
-                    else:
-                        stealth_score = 10  # Volume there but maybe late
-                elif rvol >= 1.5:  # Moderate volume increase
-                    if abs_change <= 1.5:
-                        stealth_score = 30  # Good stealth pattern
-                    elif abs_change <= 3.0:
-                        stealth_score = 20  # Decent pattern
-                    else:
-                        stealth_score = 5   # Getting noisy
-                elif rvol >= 1.3:  # Slight volume increase
-                    if abs_change <= 1.0:
-                        stealth_score = 20  # Early accumulation
-                    else:
-                        stealth_score = 5   # Minimal pattern
+                if GateConfig.ENHANCED_SCORING:
+                    # Granular stealth accumulation scoring using sigmoid curves
+                    volume_intensity = sigmoid((rvol - 1.5) / 1.0)  # Normalized around RVOL 1.5
+                    stealth_factor = sigmoid((5.0 - abs_change) / 2.0)  # Inverse relationship with price movement
 
-                # 2. SMALL CAP EXPLOSIVE POTENTIAL (25% weight) - Rebalanced
+                    # Combined stealth score with fine-grained differentiation
+                    stealth_raw = volume_intensity * stealth_factor
+                    stealth_score = 40.0 * zclip(stealth_raw, 0.1, 1.0)  # Scale to 40% weight with minimum floor
+                else:
+                    # Legacy coarse integer scoring (causes 95-point convergence)
+                    stealth_score = 0
+                    if rvol >= 2.0:  # Significant volume increase
+                        if abs_change <= 2.0:  # But minimal price movement
+                            stealth_score = 40  # PERFECT stealth accumulation
+                        elif abs_change <= 4.0:
+                            stealth_score = 30  # Good accumulation pattern
+                        else:
+                            stealth_score = 10  # Volume there but maybe late
+                    elif rvol >= 1.5:  # Moderate volume increase
+                        if abs_change <= 1.5:
+                            stealth_score = 30  # Good stealth pattern
+                        elif abs_change <= 3.0:
+                            stealth_score = 20  # Decent pattern
+                        else:
+                            stealth_score = 5   # Getting noisy
+                    elif rvol >= 1.3:  # Slight volume increase
+                        if abs_change <= 1.0:
+                            stealth_score = 20  # Early accumulation
+                        else:
+                            stealth_score = 5   # Minimal pattern
+
+                # 2. ENHANCED SMALL CAP EXPLOSIVE POTENTIAL (25% weight) - GRANULAR PRECISION
                 # Lower priced stocks have bigger explosion potential (like your winners)
-                size_score = 0
-                if price <= 5:       size_score = 25    # Ultra small cap (highest potential)
-                elif price <= 10:   size_score = 20    # Small cap
-                elif price <= 20:   size_score = 15    # Mid-small cap
-                elif price <= 50:   size_score = 10    # Moderate potential
-                elif price <= 100:  size_score = 5     # Limited upside
+                if GateConfig.ENHANCED_SCORING:
+                    # Granular size scoring using inverse sigmoid curve
+                    price_factor = sigmoid((15.0 - price) / 8.0)  # Optimal around $15, diminishing above
+                    size_score = 25.0 * zclip(price_factor, 0.1, 1.0)  # Scale to 25% weight with minimum floor
+                else:
+                    # Legacy coarse integer scoring
+                    size_score = 0
+                    if price <= 5:       size_score = 25    # Ultra small cap (highest potential)
+                    elif price <= 10:   size_score = 20    # Small cap
+                    elif price <= 20:   size_score = 15    # Mid-small cap
+                    elif price <= 50:   size_score = 10    # Moderate potential
+                    elif price <= 100:  size_score = 5     # Limited upside
 
-                # 3. COILING PATTERN BONUS (20% weight)
+                # 3. ENHANCED COILING PATTERN BONUS (20% weight) - GRANULAR PRECISION
                 # Low volatility with building volume = pressure building
-                coiling_bonus = 0
-                if rvol >= 1.5 and abs_change <= 2.0:
-                    coiling_bonus = 15  # Perfect coiling - high volume, low movement
-                elif rvol >= 1.3 and abs_change <= 1.5:
-                    coiling_bonus = 10  # Good coiling pattern
-                elif rvol >= 1.2 and abs_change <= 1.0:
-                    coiling_bonus = 5   # Early coiling
+                if GateConfig.ENHANCED_SCORING:
+                    # Granular coiling detection using combined volume and volatility factors
+                    volume_buildup = sigmoid((rvol - 1.3) / 0.5)  # Volume building above 1.3x
+                    volatility_compression = sigmoid((3.0 - abs_change) / 1.5)  # Low volatility bonus
+                    coiling_raw = volume_buildup * volatility_compression
+                    coiling_bonus = 20.0 * zclip(coiling_raw, 0.05, 1.0)  # Scale to 20% weight
+                else:
+                    # Legacy coarse integer scoring
+                    coiling_bonus = 0
+                    if rvol >= 1.5 and abs_change <= 2.0:
+                        coiling_bonus = 15  # Perfect coiling - high volume, low movement
+                    elif rvol >= 1.3 and abs_change <= 1.5:
+                        coiling_bonus = 10  # Good coiling pattern
+                    elif rvol >= 1.2 and abs_change <= 1.0:
+                        coiling_bonus = 5   # Early coiling
 
-                # 4. VOLUME QUALITY BONUS (15% weight) - Increased importance
-                # Reward exceptional volume patterns
-                volume_quality = 0
-                if rvol >= 3.0:      volume_quality = 15   # Exceptional volume
-                elif rvol >= 2.5:   volume_quality = 12   # Very high volume
-                elif rvol >= 2.0:   volume_quality = 10   # High volume
-                elif rvol >= 1.5:   volume_quality = 8    # Good volume
-                elif rvol >= 1.3:   volume_quality = 5    # Above average volume
+                # 4. ENHANCED VOLUME QUALITY BONUS (15% weight) - GRANULAR PRECISION
+                # Reward exceptional volume patterns with smooth scaling
+                if GateConfig.ENHANCED_SCORING:
+                    # Granular volume quality using logarithmic scaling
+                    volume_excellence = sigmoid((rvol - 1.5) / 1.2)  # Sweet spot around 2.5x RVOL
+                    volume_quality = 15.0 * zclip(volume_excellence, 0.05, 1.0)  # Scale to 15% weight
+                else:
+                    # Legacy coarse integer scoring
+                    volume_quality = 0
+                    if rvol >= 3.0:      volume_quality = 15   # Exceptional volume
+                    elif rvol >= 2.5:   volume_quality = 12   # Very high volume
+                    elif rvol >= 2.0:   volume_quality = 10   # High volume
+                    elif rvol >= 1.5:   volume_quality = 8    # Good volume
+                    elif rvol >= 1.3:   volume_quality = 5    # Above average volume
 
                 total_score = stealth_score + size_score + coiling_bonus + volume_quality
 
@@ -450,6 +803,15 @@ class UniversalDiscoverySystem:
         # logger.info(f"🎯 Enhancing top {len(top_stocks)} candidates with precise RVOL...")
         # top_stocks = self._enhance_top_candidates_rvol(top_stocks)
 
+        # Phase 2: Premium data enrichment (market cap, float, short interest)
+        if GateConfig.ENHANCED_SCORING:
+            logger.info(f"💎 Phase 2: Enriching top candidates with premium market data...")
+            top_stocks = self._enrich_with_premium_data(top_stocks)
+
+            # Phase 3: Quality gates for cream-of-the-crop filtering
+            logger.info(f"🎯 Phase 3: Applying quality gates to identify cream-of-the-crop...")
+            top_stocks = self._apply_quality_gates(top_stocks, target_count=limit)
+
         # Convert to enhanced result format with RVOL data
         results = []
         for _, row in top_stocks.iterrows():
@@ -458,30 +820,50 @@ class UniversalDiscoverySystem:
                 'price': round(row['price'], 2),
                 'volume': int(row['volume']),
                 'change_pct': round(row['change_pct'], 2),
-                'accumulation_score': round(row['accumulation_score'], 1),
+                'accumulation_score': round(row['accumulation_score'], 2),  # Enhanced precision for differentiation
                 'rvol': row.get('rvol', 1.0),  # Relative volume ratio
                 'tier': 'A-TIER' if row['accumulation_score'] >= 50 else 'B-TIER',
                 'data_source': 'DIRECT_POLYGON_API',
-                'signals': []  # Will be populated with detected signals
+                'signals': [],  # Will be populated with detected signals
+
+                # Premium data fields (Phase 2 enhancement)
+                'market_cap': row.get('market_cap', 0),
+                'shares_outstanding': row.get('shares_outstanding', 0),
+                'company_name': row.get('company_name', ''),
+                'sector': row.get('sector', ''),
+                'float_value': row.get('float_value', 0),
+                'float_size': row.get('float_size', 'Unknown'),
+                'short_interest': row.get('short_interest', 0),
+                'days_to_cover': row.get('days_to_cover', 0),
+                'short_squeeze_potential': row.get('short_squeeze_potential', 'Unknown'),
+
+                # Phase 5: Explosion probability composite score
+                'explosion_probability': self._calculate_explosion_probability(row) if GateConfig.ENHANCED_SCORING else 0
             }
 
-            # Add signal indicators based on PRE-EXPLOSION patterns (like June-July winners)
-            if row.get('rvol', 1.0) >= 2.0 and abs(row['change_pct']) <= 2.0:
-                result['signals'].append('Stealth Accumulation Pattern')  # Like VIGL, CRWV before explosion
-            elif row.get('rvol', 1.0) >= 1.5 and abs(row['change_pct']) <= 1.5:
-                result['signals'].append('Early Accumulation')
-            elif row.get('rvol', 1.0) >= 2.0:
-                result['signals'].append('High Volume Activity')
+            # Phase 4: Generate dynamic, data-driven reasons instead of generic signals
+            if GateConfig.ENHANCED_SCORING:
+                result['reasons'] = self._generate_dynamic_reasons(row)
+                # Keep signals for backward compatibility, but populate with key reasons
+                result['signals'] = result['reasons'][:3]  # Top 3 reasons as signals
+            else:
+                # Legacy generic signals (for non-enhanced mode)
+                if row.get('rvol', 1.0) >= 2.0 and abs(row['change_pct']) <= 2.0:
+                    result['signals'].append('Stealth Accumulation Pattern')
+                elif row.get('rvol', 1.0) >= 1.5 and abs(row['change_pct']) <= 1.5:
+                    result['signals'].append('Early Accumulation')
+                elif row.get('rvol', 1.0) >= 2.0:
+                    result['signals'].append('High Volume Activity')
 
-            if row['price'] <= 10:
-                result['signals'].append('Small Cap Explosive Potential')  # Like your biggest winners
-            elif row['price'] <= 25:
-                result['signals'].append('Mid-Small Cap Opportunity')
+                if row['price'] <= 10:
+                    result['signals'].append('Small Cap Explosive Potential')
+                elif row['price'] <= 25:
+                    result['signals'].append('Mid-Small Cap Opportunity')
 
-            if row['accumulation_score'] >= 70:
-                result['signals'].append('Pre-Explosion Setup Complete')
-            elif row['accumulation_score'] >= 50:
-                result['signals'].append('Building Accumulation Pattern')
+                if row['accumulation_score'] >= 70:
+                    result['signals'].append('Pre-Explosion Setup Complete')
+                elif row['accumulation_score'] >= 50:
+                    result['signals'].append('Building Accumulation Pattern')
 
             results.append(result)
 

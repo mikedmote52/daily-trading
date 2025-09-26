@@ -384,10 +384,19 @@ async def get_top_signals():
                 formatted_result = {
                     "symbol": symbol,
                     "price": float(candidate.get("price", 0)),
-                    "score": int(candidate.get("accumulation_score", 0)),
+                    "score": float(candidate.get("accumulation_score", 0)),  # Keep decimal precision!
                     "volume": int(candidate.get("volume", 0)),
                     "rvol": float(candidate.get("rvol", 1.0)),
-                    "reason": ", ".join(candidate.get("signals", ["Strong accumulation pattern detected"]))
+                    "explosion_probability": float(candidate.get("explosion_probability", 0)),  # New explosion probability
+                    "reason": ", ".join(candidate.get("signals", candidate.get("reasons", ["Accumulation pattern detected"]))),  # Use enhanced reasons
+
+                    # Additional enhanced data fields for frontend
+                    "tier": candidate.get("tier", "B-TIER"),
+                    "market_cap": candidate.get("market_cap", 0),
+                    "company_name": candidate.get("company_name", ""),
+                    "sector": candidate.get("sector", ""),
+                    "short_squeeze_potential": candidate.get("short_squeeze_potential", "Unknown"),
+                    "data_source": "ENHANCED_DISCOVERY_SYSTEM"
                 }
                 formatted_results.append(formatted_result)
             except (ValueError, TypeError) as e:
