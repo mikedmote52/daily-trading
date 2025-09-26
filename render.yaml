@@ -115,7 +115,7 @@ services:
   - type: static
     name: alphastack-frontend-mcp
     repo: https://github.com/mikedmote52/daily-trading.git
-    rootDir: frontend
+    rootDir: agents/frontend
     # Vite build system
     buildCommand: npm install && npm run build
     publishPath: dist

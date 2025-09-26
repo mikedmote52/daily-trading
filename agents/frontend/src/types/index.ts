@@ -27,6 +27,15 @@ export interface Stock {
   shortInterest?: number;
   aiScore?: number;
   signals?: string[];
+
+  // Phase 6: Web Context Enrichment fields
+  web_catalyst_summary?: string | null;
+  web_catalyst_score?: number;
+  web_sentiment_score?: number;
+  web_sentiment_description?: string | null;
+  institutional_activity?: string | null;
+  institutional_score?: number;
+  explosion_probability?: number;
 }
 
 export interface Position {

@@ -31,15 +31,15 @@ export class DiscoveryService {
         throw new Error('Invalid data format from discovery API');
       }
 
-      // Transform discovery API data to frontend format
+      // Transform discovery API data to frontend format with enhanced web enrichment
       const transformedData = data.map((stock: any) => ({
         symbol: stock.symbol,
-        name: stock.symbol, // Discovery API doesn't provide company names
+        name: stock.company_name || stock.symbol, // Use enhanced company name if available
         price: parseFloat(stock.price),
         change: 0, // Not provided by discovery API
         change_percent: 0, // Not provided by discovery API
         volume: parseInt(stock.volume || 0),
-        market_cap: null, // Not provided by discovery API
+        market_cap: stock.market_cap || null, // Enhanced market cap data
         pe_ratio: null, // Not provided by discovery API
         short_interest: null, // Not provided by discovery API
         volatility: parseFloat(stock.rvol || 0), // Use RVOL as volatility proxy
@@ -47,7 +47,16 @@ export class DiscoveryService {
         volume_score: parseFloat(stock.rvol || 1), // Use RVOL as volume score
         ai_score: Math.round(parseFloat(stock.score || 70)), // Use discovery score as AI score
         signals: [stock.reason || 'Discovery Signal'], // Use reason as signal
-        recommendation: 'BUY' as const // Discovery API only returns buy candidates
+        recommendation: 'BUY' as const, // Discovery API only returns buy candidates
+
+        // Phase 6: Web Context Enrichment fields
+        web_catalyst_summary: stock.web_catalyst_summary || null,
+        web_catalyst_score: parseFloat(stock.web_catalyst_score || 0),
+        web_sentiment_score: parseFloat(stock.web_sentiment_score || 0),
+        web_sentiment_description: stock.web_sentiment_description || null,
+        institutional_activity: stock.institutional_activity || null,
+        institutional_score: parseFloat(stock.institutional_score || 0),
+        explosion_probability: parseFloat(stock.explosion_probability || 0)
       }));
 
       console.log(`🎯 Transformed ${transformedData.length} stocks for frontend`);
