@@ -73,7 +73,7 @@ class GateConfig:
     ENRICHMENT_LIMIT = 30     # Top N candidates to enrich with premium data
 
     # Phase 6: Web Context Enrichment
-    WEB_ENRICHMENT = False    # Enable real-time web context enrichment (Perplexity API)
+    WEB_ENRICHMENT = True     # Enable real-time web context enrichment (Perplexity API)
     WEB_ENRICHMENT_LIMIT = 8  # Top N survivors to enrich with web context
 
 class UniversalDiscoverySystem:
