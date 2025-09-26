@@ -15,6 +15,15 @@ export interface StockAnalysis {
   ai_score: number;
   signals: string[];
   recommendation: 'BUY' | 'SELL' | 'HOLD' | 'AVOID';
+
+  // Local Web Enrichment Fields
+  web_catalyst_summary?: string | null;
+  web_catalyst_score?: number;
+  web_sentiment_score?: number;
+  web_sentiment_description?: string | null;
+  institutional_activity?: string | null;
+  institutional_score?: number;
+  explosion_probability?: number;
 }
 
 // Market overview metrics

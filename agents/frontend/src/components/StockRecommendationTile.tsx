@@ -227,26 +227,117 @@ export const StockRecommendationTile: React.FC<StockRecommendationTileProps> = (
 
       {/* Detailed Analysis (Expandable) */}
       {showDetails && (
-        <div className="mt-4 pt-4 border-t border-gray-600 text-xs text-gray-300 space-y-2">
-          <div>
-            <span className="text-gray-400">Momentum Score:</span> {stockAnalysis.momentum_score.toFixed(2)}
+        <div className="mt-4 pt-4 border-t border-gray-600 text-xs space-y-4">
+
+          {/* Core Metrics */}
+          <div className="bg-black/30 rounded-lg p-3">
+            <h4 className="text-white font-bold mb-2">🎯 Core Analysis</h4>
+            <div className="space-y-1 text-gray-300">
+              <div>
+                <span className="text-gray-400">AI Score:</span>
+                <span className={`font-bold ml-1 ${stockAnalysis.ai_score >= 80 ? 'text-green-400' : stockAnalysis.ai_score >= 60 ? 'text-yellow-400' : 'text-gray-400'}`}>
+                  {stockAnalysis.ai_score}
+                </span>
+              </div>
+              <div>
+                <span className="text-gray-400">Momentum Score:</span> {stockAnalysis.momentum_score.toFixed(2)}
+              </div>
+              <div>
+                <span className="text-gray-400">Volume Score:</span> {stockAnalysis.volume_score.toFixed(2)}x
+              </div>
+              {stockAnalysis.explosion_probability && (
+                <div>
+                  <span className="text-gray-400">Explosion Probability:</span>
+                  <span className="text-orange-400 font-bold ml-1">{stockAnalysis.explosion_probability.toFixed(1)}%</span>
+                </div>
+              )}
+            </div>
           </div>
-          <div>
-            <span className="text-gray-400">Volume Score:</span> {stockAnalysis.volume_score.toFixed(2)}x
-          </div>
-          {stockAnalysis.short_interest && (
-            <div>
-              <span className="text-gray-400">Short Interest:</span> {stockAnalysis.short_interest.toFixed(1)}%
+
+          {/* Web Enrichment Insights */}
+          {(stockAnalysis.web_catalyst_summary || stockAnalysis.web_sentiment_score || stockAnalysis.institutional_activity) && (
+            <div className="bg-blue-900/30 rounded-lg p-3 border border-blue-700/30">
+              <h4 className="text-blue-300 font-bold mb-2">🌐 Market Intelligence</h4>
+
+              {/* Catalyst Analysis */}
+              {stockAnalysis.web_catalyst_summary && (
+                <div className="mb-3">
+                  <div className="text-blue-200 font-medium text-xs mb-1">
+                    📈 Catalyst Summary
+                    {stockAnalysis.web_catalyst_score && (
+                      <span className="ml-2 bg-blue-600 text-white px-2 py-0.5 rounded text-xs">
+                        Score: {stockAnalysis.web_catalyst_score}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-gray-300 text-xs leading-relaxed bg-black/20 p-2 rounded">
+                    {stockAnalysis.web_catalyst_summary}
+                  </div>
+                </div>
+              )}
+
+              {/* Sentiment Analysis */}
+              {stockAnalysis.web_sentiment_score !== undefined && stockAnalysis.web_sentiment_score > 0 && (
+                <div className="mb-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="text-blue-200 font-medium text-xs">💭 Market Sentiment</div>
+                    <div className="flex items-center">
+                      <div className={`w-2 h-2 rounded-full mr-1 ${
+                        stockAnalysis.web_sentiment_score >= 70 ? 'bg-green-400' :
+                        stockAnalysis.web_sentiment_score >= 50 ? 'bg-yellow-400' : 'bg-red-400'
+                      }`}></div>
+                      <span className="text-xs text-gray-300">{stockAnalysis.web_sentiment_score.toFixed(1)}/100</span>
+                    </div>
+                  </div>
+                  {stockAnalysis.web_sentiment_description && (
+                    <div className="text-gray-300 text-xs bg-black/20 p-2 rounded">
+                      {stockAnalysis.web_sentiment_description}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Institutional Activity */}
+              {stockAnalysis.institutional_activity && (
+                <div className="mb-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="text-blue-200 font-medium text-xs">🏦 Institutional Activity</div>
+                    {stockAnalysis.institutional_score && (
+                      <span className="bg-purple-600 text-white px-2 py-0.5 rounded text-xs">
+                        Score: {stockAnalysis.institutional_score.toFixed(1)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-gray-300 text-xs bg-black/20 p-2 rounded">
+                    {stockAnalysis.institutional_activity}
+                  </div>
+                </div>
+              )}
             </div>
           )}
-          {stockAnalysis.pe_ratio && (
-            <div>
-              <span className="text-gray-400">P/E Ratio:</span> {stockAnalysis.pe_ratio.toFixed(1)}
+
+          {/* Technical Details */}
+          <div className="bg-gray-800/50 rounded-lg p-3">
+            <h4 className="text-gray-300 font-bold mb-2">📊 Technical Data</h4>
+            <div className="grid grid-cols-2 gap-2 text-gray-300">
+              {stockAnalysis.short_interest && (
+                <div>
+                  <span className="text-gray-400">Short Interest:</span> {stockAnalysis.short_interest.toFixed(1)}%
+                </div>
+              )}
+              {stockAnalysis.pe_ratio && (
+                <div>
+                  <span className="text-gray-400">P/E Ratio:</span> {stockAnalysis.pe_ratio.toFixed(1)}
+                </div>
+              )}
+              <div>
+                <span className="text-gray-400">Volatility:</span> {(stockAnalysis.volatility * 100).toFixed(0)}%
+              </div>
+              <div>
+                <span className="text-gray-400">Recommendation:</span>
+                <span className="text-green-400 font-bold ml-1">{stockAnalysis.recommendation}</span>
+              </div>
             </div>
-          )}
-          <div>
-            <span className="text-gray-400">Recommendation:</span>
-            <span className="text-green-400 font-bold"> {stockAnalysis.recommendation}</span>
           </div>
         </div>
       )}
