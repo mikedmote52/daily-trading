@@ -72,6 +72,10 @@ class GateConfig:
     ENHANCED_SCORING = True   # Enable granular scoring and premium data enrichment
     ENRICHMENT_LIMIT = 30     # Top N candidates to enrich with premium data
 
+    # Phase 6: Web Context Enrichment
+    WEB_ENRICHMENT = False    # Enable real-time web context enrichment (Perplexity API)
+    WEB_ENRICHMENT_LIMIT = 8  # Top N survivors to enrich with web context
+
 class UniversalDiscoverySystem:
     def __init__(self):
         self.polygon_api_key = os.getenv('POLYGON_API_KEY')
@@ -547,6 +551,192 @@ class UniversalDiscoverySystem:
 
         return round(probability_pct, 1)
 
+    def _enrich_with_web_context(self, survivors_df: pd.DataFrame) -> pd.DataFrame:
+        """Phase 6: Web Context Enrichment using Perplexity API for real-time catalysts"""
+        if not GateConfig.WEB_ENRICHMENT:
+            return survivors_df
+
+        enriched_df = survivors_df.copy()
+        limit = min(GateConfig.WEB_ENRICHMENT_LIMIT, len(survivors_df))
+
+        logger.info(f"🌐 Phase 6: Enriching top {limit} survivors with web context...")
+
+        # Initialize web enrichment fields with None defaults
+        for idx, row in enriched_df.iterrows():
+            enriched_df.at[idx, 'web_catalyst_summary'] = None
+            enriched_df.at[idx, 'web_sentiment_score'] = None
+            enriched_df.at[idx, 'analyst_action'] = None
+
+        for idx, (_, row) in enumerate(survivors_df.head(limit).iterrows()):
+            try:
+                symbol = row['symbol']
+                start_time = time.time()
+                logger.debug(f"🔍 Enriching {symbol} with web context...")
+
+                # Query 1: Recent news and catalysts
+                news_query = f"latest news {symbol} stock site:finance.yahoo.com OR site:benzinga.com OR site:seekingalpha.com"
+                news_context = self._query_perplexity(news_query)
+
+                # Query 2: Analyst actions
+                analyst_query = f"analyst rating upgrade downgrade {symbol} stock"
+                analyst_context = self._query_perplexity(analyst_query)
+
+                # Query 3: Social sentiment
+                social_query = f"Reddit StockTwits {symbol} stock buzz"
+                social_context = self._query_perplexity(social_query)
+
+                # Parse and extract insights
+                web_insights = self._parse_web_context(news_context, analyst_context, social_context, symbol)
+
+                # Store enrichment data
+                enriched_df.at[row.name, 'web_catalyst_summary'] = web_insights.get('catalyst_summary')
+                enriched_df.at[row.name, 'web_sentiment_score'] = web_insights.get('sentiment_score')
+                enriched_df.at[row.name, 'analyst_action'] = web_insights.get('analyst_action')
+
+                # Apply small multipliers to explosion probability (max +10% uplift)
+                current_prob = enriched_df.at[row.name, 'explosion_probability']
+                if current_prob and current_prob > 0:
+                    multiplier = 1.0
+
+                    # Catalyst bonus
+                    if web_insights.get('catalyst_summary'):
+                        multiplier *= 1.05
+                        logger.debug(f"   📈 {symbol}: Catalyst bonus applied (+5%)")
+
+                    # Positive sentiment bonus
+                    sentiment = web_insights.get('sentiment_score')
+                    if sentiment and sentiment > 0.7:
+                        multiplier *= 1.03
+                        logger.debug(f"   😊 {symbol}: Positive sentiment bonus (+3%)")
+
+                    # Analyst upgrade bonus
+                    if web_insights.get('analyst_action') == 'upgrade':
+                        multiplier *= 1.02
+                        logger.debug(f"   📊 {symbol}: Analyst upgrade bonus (+2%)")
+
+                    # Apply multiplier (cap at 95%)
+                    new_prob = min(current_prob * multiplier, 95.0)
+                    enriched_df.at[row.name, 'explosion_probability'] = round(new_prob, 1)
+
+                    if new_prob > current_prob:
+                        logger.info(f"   🚀 {symbol}: Explosion probability boosted {current_prob:.1f}% → {new_prob:.1f}%")
+
+                # Timeout protection
+                elapsed = time.time() - start_time
+                if elapsed > 5.0:  # 5 second per stock limit
+                    logger.info(f"⏰ Web enrichment timeout: stopping at {idx+1}/{limit}")
+                    break
+
+            except Exception as e:
+                logger.debug(f"⚠️ Web enrichment failed for {row['symbol']}: {e}")
+                continue
+
+        # Calculate enrichment success rate
+        enriched_count = len(enriched_df[enriched_df['web_catalyst_summary'].notna()])
+        success_rate = (enriched_count / limit) * 100 if limit > 0 else 0
+        logger.info(f"🌐 Web context enrichment complete: {enriched_count}/{limit} stocks ({success_rate:.1f}%)")
+
+        return enriched_df
+
+    def _query_perplexity(self, query: str) -> str:
+        """Query Perplexity API for web context - returns empty string if no API key or failure"""
+        try:
+            # Check for Perplexity API key
+            perplexity_key = os.getenv('PERPLEXITY_API_KEY')
+            if not perplexity_key:
+                logger.debug("No PERPLEXITY_API_KEY found - skipping web enrichment")
+                return ""
+
+            # Make API request to Perplexity
+            import requests
+            headers = {
+                'Authorization': f'Bearer {perplexity_key}',
+                'Content-Type': 'application/json'
+            }
+
+            payload = {
+                'model': 'llama-3.1-sonar-small-online',
+                'messages': [
+                    {'role': 'user', 'content': query}
+                ],
+                'max_tokens': 200,
+                'temperature': 0.1
+            }
+
+            response = requests.post(
+                'https://api.perplexity.ai/chat/completions',
+                json=payload,
+                headers=headers,
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                if 'choices' in result and len(result['choices']) > 0:
+                    return result['choices'][0]['message']['content']
+                else:
+                    logger.debug(f"No choices in Perplexity response: {result}")
+                    return ""
+            else:
+                logger.debug(f"Perplexity API error {response.status_code}: {response.text}")
+                return ""
+
+        except Exception as e:
+            logger.debug(f"Perplexity API query failed: {e}")
+            return ""
+
+    def _parse_web_context(self, news_content: str, analyst_content: str, social_content: str, symbol: str) -> Dict:
+        """Parse web context content to extract structured insights"""
+        insights = {
+            'catalyst_summary': None,
+            'sentiment_score': None,
+            'analyst_action': None
+        }
+
+        try:
+            # Parse catalyst summary from news content
+            if news_content:
+                # Look for common catalyst keywords
+                catalyst_keywords = ['FDA', 'trial', 'earnings', 'merger', 'acquisition', 'partnership',
+                                   'contract', 'approval', 'launch', 'insider buying', 'buyback']
+
+                news_lower = news_content.lower()
+                found_catalysts = [kw for kw in catalyst_keywords if kw.lower() in news_lower]
+
+                if found_catalysts:
+                    # Extract a concise summary (first 100 chars with catalyst context)
+                    catalyst_summary = news_content[:100].strip()
+                    if len(news_content) > 100:
+                        catalyst_summary += "..."
+                    insights['catalyst_summary'] = catalyst_summary
+
+            # Parse analyst action
+            if analyst_content:
+                analyst_lower = analyst_content.lower()
+                if 'upgrade' in analyst_lower:
+                    insights['analyst_action'] = 'upgrade'
+                elif 'downgrade' in analyst_lower:
+                    insights['analyst_action'] = 'downgrade'
+
+            # Parse sentiment score (simple keyword-based)
+            if social_content:
+                positive_words = ['bullish', 'buy', 'moon', 'rocket', 'strong', 'good', 'positive', 'up']
+                negative_words = ['bearish', 'sell', 'dump', 'weak', 'bad', 'negative', 'down']
+
+                social_lower = social_content.lower()
+                positive_count = sum(1 for word in positive_words if word in social_lower)
+                negative_count = sum(1 for word in negative_words if word in social_lower)
+
+                total_sentiment_words = positive_count + negative_count
+                if total_sentiment_words > 0:
+                    sentiment_score = positive_count / total_sentiment_words
+                    insights['sentiment_score'] = round(sentiment_score, 2)
+
+        except Exception as e:
+            logger.debug(f"Error parsing web context for {symbol}: {e}")
+
+        return insights
+
     def get_mcp_filtered_universe(self) -> pd.DataFrame:
         """Get universe using direct Polygon API - GUARANTEED REAL DATA"""
         logger.info("🎯 Loading universe via direct Polygon API...")
@@ -812,6 +1002,11 @@ class UniversalDiscoverySystem:
             logger.info(f"🎯 Phase 3: Applying quality gates to identify cream-of-the-crop...")
             top_stocks = self._apply_quality_gates(top_stocks, target_count=limit)
 
+            # Phase 6: Web Context Enrichment (optional)
+            if GateConfig.WEB_ENRICHMENT:
+                logger.info(f"🌐 Phase 6: Enriching survivors with real-time web context...")
+                top_stocks = self._enrich_with_web_context(top_stocks)
+
         # Convert to enhanced result format with RVOL data
         results = []
         for _, row in top_stocks.iterrows():
@@ -838,12 +1033,43 @@ class UniversalDiscoverySystem:
                 'short_squeeze_potential': row.get('short_squeeze_potential', 'Unknown'),
 
                 # Phase 5: Explosion probability composite score
-                'explosion_probability': self._calculate_explosion_probability(row) if GateConfig.ENHANCED_SCORING else 0
+                'explosion_probability': self._calculate_explosion_probability(row) if GateConfig.ENHANCED_SCORING else 0,
+
+                # Phase 6: Web Context Enrichment fields (optional)
+                'web_catalyst_summary': row.get('web_catalyst_summary'),
+                'web_sentiment_score': row.get('web_sentiment_score'),
+                'analyst_action': row.get('analyst_action')
             }
 
             # Phase 4: Generate dynamic, data-driven reasons instead of generic signals
             if GateConfig.ENHANCED_SCORING:
                 result['reasons'] = self._generate_dynamic_reasons(row)
+
+                # Phase 6: Augment reasons with web context if available
+                if GateConfig.WEB_ENRICHMENT and row.get('web_catalyst_summary'):
+                    web_augmentation = []
+
+                    # Add catalyst context
+                    if row.get('web_catalyst_summary'):
+                        web_augmentation.append(f" + fresh catalyst: {row['web_catalyst_summary'][:50]}...")
+
+                    # Add analyst action
+                    if row.get('analyst_action') == 'upgrade':
+                        web_augmentation.append(" + analyst upgrade noted")
+                    elif row.get('analyst_action') == 'downgrade':
+                        web_augmentation.append(" + analyst downgrade warning")
+
+                    # Add sentiment context
+                    sentiment = row.get('web_sentiment_score')
+                    if sentiment and sentiment > 0.7:
+                        web_augmentation.append(" + positive web sentiment")
+                    elif sentiment and sentiment < 0.3:
+                        web_augmentation.append(" + negative web sentiment")
+
+                    # Augment the first reason with web context
+                    if web_augmentation and result['reasons']:
+                        result['reasons'][0] += "".join(web_augmentation)
+
                 # Keep signals for backward compatibility, but populate with key reasons
                 result['signals'] = result['reasons'][:3]  # Top 3 reasons as signals
             else:
