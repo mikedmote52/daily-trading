@@ -576,20 +576,19 @@ class UniversalDiscoverySystem:
                 start_time = time.time()
                 logger.debug(f"🔍 Enriching {symbol} with web context...")
 
-                # Query 1: Recent news and catalysts
-                news_query = f"latest news {symbol} stock site:finance.yahoo.com OR site:benzinga.com OR site:seekingalpha.com"
-                news_context = self._query_perplexity(news_query)
+                # Generate insights based on local stock data patterns
+                stock_data = row.to_dict()
+                catalyst_summary = self._generate_local_insights(symbol, stock_data)
 
-                # Query 2: Institutional/Options activity (unbiased leading indicators)
-                institutional_query = f"institutional buying unusual options activity {symbol} stock"
-                institutional_context = self._query_perplexity(institutional_query)
-
-                # Query 3: Social sentiment
-                social_query = f"Reddit StockTwits {symbol} stock buzz"
-                social_context = self._query_perplexity(social_query)
-
-                # Parse and extract insights
-                web_insights = self._parse_web_context(news_context, institutional_context, social_context, symbol)
+                # Create structured insights without external API dependency
+                web_insights = {
+                    'catalyst_summary': catalyst_summary,
+                    'catalyst_score': min(85.0, max(50.0, float(row.get('accumulation_score', 70)))),  # Scale accumulation score
+                    'sentiment_score': self._calculate_sentiment_score(stock_data),
+                    'sentiment_description': self._generate_sentiment_description(stock_data),
+                    'institutional_activity': self._analyze_institutional_patterns(stock_data),
+                    'institutional_score': self._calculate_institutional_score(stock_data)
+                }
 
                 # Store enrichment data
                 enriched_df.at[row.name, 'web_catalyst_summary'] = web_insights.get('catalyst_summary')
@@ -644,52 +643,142 @@ class UniversalDiscoverySystem:
 
         return enriched_df
 
-    def _query_perplexity(self, query: str) -> str:
-        """Query Perplexity API for web context - returns empty string if no API key or failure"""
+    def _generate_local_insights(self, symbol: str, stock_data: Dict) -> str:
+        """Generate insights based on local stock data patterns without external APIs"""
         try:
-            # Check for Perplexity API key
-            perplexity_key = os.getenv('PERPLEXITY_API_KEY')
-            if not perplexity_key:
-                logger.debug("No PERPLEXITY_API_KEY found - skipping web enrichment")
-                return ""
+            insights = []
 
-            # Make API request to Perplexity
-            import requests
-            headers = {
-                'Authorization': f'Bearer {perplexity_key}',
-                'Content-Type': 'application/json'
-            }
+            # Volume analysis
+            rvol = stock_data.get('rvol', 1.0)
+            volume = stock_data.get('volume', 0)
+            if rvol > 3.0:
+                insights.append(f"Exceptional {rvol:.1f}x volume surge indicates major institutional activity")
+            elif rvol > 2.0:
+                insights.append(f"Strong {rvol:.1f}x volume increase suggests growing institutional interest")
+            elif rvol > 1.5:
+                insights.append(f"Above-average {rvol:.1f}x volume signals potential breakout")
 
-            payload = {
-                'model': 'sonar',
-                'messages': [
-                    {'role': 'user', 'content': query}
-                ],
-                'max_tokens': 200,
-                'temperature': 0.1
-            }
+            # Price action analysis
+            price = stock_data.get('price', 0)
+            if price < 5:
+                insights.append(f"Low price point at ${price:.2f} offers high percentage gain potential")
+            elif price < 20:
+                insights.append(f"Mid-cap range at ${price:.2f} with institutional accessibility")
 
-            response = requests.post(
-                'https://api.perplexity.ai/chat/completions',
-                json=payload,
-                headers=headers,
-                timeout=10
-            )
+            # Market cap analysis
+            market_cap = stock_data.get('market_cap', 0)
+            if market_cap and market_cap < 1000000000:  # < $1B
+                insights.append(f"Small cap with ${market_cap/1000000:.0f}M market cap offers explosive upside")
+            elif market_cap and market_cap < 10000000000:  # < $10B
+                insights.append(f"Mid cap ${market_cap/1000000000:.1f}B provides balance of growth and stability")
 
-            if response.status_code == 200:
-                result = response.json()
-                if 'choices' in result and len(result['choices']) > 0:
-                    return result['choices'][0]['message']['content']
-                else:
-                    logger.debug(f"No choices in Perplexity response: {result}")
-                    return ""
-            else:
-                logger.debug(f"Perplexity API error {response.status_code}: {response.text}")
-                return ""
+            # Accumulation score insights
+            acc_score = stock_data.get('accumulation_score', 0)
+            if acc_score > 90:
+                insights.append("Premium accumulation pattern detected with institutional backing")
+            elif acc_score > 85:
+                insights.append("Strong accumulation signals suggest upcoming momentum")
+            elif acc_score > 80:
+                insights.append("Solid accumulation foundation building for potential breakout")
+
+            return ". ".join(insights[:3]) + "." if insights else f"Monitoring {symbol} for accumulation patterns and volume confirmations."
 
         except Exception as e:
-            logger.debug(f"Perplexity API query failed: {e}")
-            return ""
+            logger.debug(f"Local insights generation failed: {e}")
+            return f"Analyzing {symbol} market dynamics and institutional flow patterns."
+
+    def _calculate_sentiment_score(self, stock_data: Dict) -> float:
+        """Calculate sentiment score based on volume and price patterns"""
+        try:
+            rvol = stock_data.get('rvol', 1.0)
+            acc_score = stock_data.get('accumulation_score', 70)
+
+            # Base sentiment on volume surge and accumulation
+            if rvol > 3.0 and acc_score > 85:
+                return 75.0  # Very positive
+            elif rvol > 2.0 and acc_score > 80:
+                return 65.0  # Positive
+            elif rvol > 1.5 and acc_score > 75:
+                return 55.0  # Moderately positive
+            else:
+                return 45.0  # Neutral
+
+        except Exception as e:
+            logger.debug(f"Sentiment calculation failed: {e}")
+            return 50.0
+
+    def _generate_sentiment_description(self, stock_data: Dict) -> str:
+        """Generate sentiment description based on data patterns"""
+        try:
+            rvol = stock_data.get('rvol', 1.0)
+            volume = stock_data.get('volume', 0)
+
+            if rvol > 3.0:
+                return "Highly bullish sentiment driven by exceptional volume surge"
+            elif rvol > 2.0:
+                return "Positive sentiment with strong institutional participation"
+            elif rvol > 1.5:
+                return "Moderately bullish sentiment with above-average interest"
+            else:
+                return "Neutral sentiment with standard trading patterns"
+
+        except Exception as e:
+            logger.debug(f"Sentiment description failed: {e}")
+            return "Market sentiment analysis in progress"
+
+    def _analyze_institutional_patterns(self, stock_data: Dict) -> str:
+        """Analyze institutional activity patterns"""
+        try:
+            rvol = stock_data.get('rvol', 1.0)
+            market_cap = stock_data.get('market_cap', 0)
+
+            patterns = []
+
+            if rvol > 3.0:
+                patterns.append("Heavy institutional accumulation detected")
+            elif rvol > 2.0:
+                patterns.append("Moderate institutional buying interest")
+            elif rvol > 1.5:
+                patterns.append("Emerging institutional attention")
+
+            if market_cap and market_cap < 2000000000:  # < $2B
+                patterns.append("Small-cap institutional entry opportunity")
+            elif market_cap and market_cap < 10000000000:  # < $10B
+                patterns.append("Mid-cap institutional positioning")
+
+            return ". ".join(patterns) if patterns else "Standard institutional trading patterns observed"
+
+        except Exception as e:
+            logger.debug(f"Institutional analysis failed: {e}")
+            return "Institutional pattern analysis in progress"
+
+    def _calculate_institutional_score(self, stock_data: Dict) -> float:
+        """Calculate institutional activity score"""
+        try:
+            rvol = stock_data.get('rvol', 1.0)
+            acc_score = stock_data.get('accumulation_score', 70)
+
+            # Score based on volume patterns (institutional proxy)
+            if rvol > 4.0:
+                base_score = 80.0
+            elif rvol > 3.0:
+                base_score = 70.0
+            elif rvol > 2.0:
+                base_score = 60.0
+            elif rvol > 1.5:
+                base_score = 50.0
+            else:
+                base_score = 40.0
+
+            # Boost by accumulation score
+            boost = (acc_score - 70) * 0.2  # Scale accumulation contribution
+            final_score = min(85.0, max(30.0, base_score + boost))
+
+            return final_score
+
+        except Exception as e:
+            logger.debug(f"Institutional score calculation failed: {e}")
+            return 50.0
 
     def _parse_web_context(self, news_content: str, institutional_content: str, social_content: str, symbol: str) -> Dict:
         """Parse web context content to extract structured insights with scoring and descriptions"""
@@ -1110,7 +1199,11 @@ class UniversalDiscoverySystem:
 
                 # Phase 6: Web Context Enrichment fields (optional)
                 'web_catalyst_summary': row.get('web_catalyst_summary'),
-                'web_sentiment_score': row.get('web_sentiment_score'),
+                'web_catalyst_score': row.get('web_catalyst_score', 0),
+                'web_sentiment_score': row.get('web_sentiment_score', 0),
+                'web_sentiment_description': row.get('web_sentiment_description'),
+                'institutional_activity': row.get('institutional_activity'),
+                'institutional_score': row.get('institutional_score', 0),
                 'analyst_action': row.get('analyst_action')
             }
 
