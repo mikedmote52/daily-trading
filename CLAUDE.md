@@ -79,6 +79,19 @@
 - Pattern recognition assistance
 - Market analysis support
 
+## 🚀 MANDATORY DEPLOYMENT WORKFLOW - NEVER SKIP
+
+### EVERY Code Change MUST Be Deployed:
+1. **Make changes** and test locally
+2. **Git add** the changed files: `git add <files>`
+3. **Git commit** with descriptive message: `git commit -m "message"`
+4. **Git push** to trigger deployment: `git push origin main`
+5. **Confirm** push succeeded and inform user: "Changes pushed - Render will auto-deploy in ~10-15 minutes"
+
+**⚠️ LOCAL CHANGES ARE WORTHLESS WITHOUT DEPLOYMENT**
+**⚠️ ALWAYS COMPLETE THE FULL WORKFLOW**
+**⚠️ RENDER ONLY DEPLOYS WHAT'S PUSHED TO GITHUB**
+
 ## Development Guidelines
 
 ### Before ANY Discovery Work:
@@ -98,6 +111,7 @@
 2. **Using Gainers API** - This finds stocks AFTER explosion
 3. **Filtering by percent change** - This biases toward already-moved stocks
 4. **Creating duplicate systems** - Causes system failures and inconsistencies
+5. **FORGETTING TO PUSH CHANGES** - Local testing success ≠ deployment. ALWAYS push to GitHub!
 
 ## Recovery Protocol
 
