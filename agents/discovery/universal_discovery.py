@@ -60,7 +60,7 @@ def _call_polygon_api(function_name: str, **kwargs):
 class GateConfig:
     """Configuration for gate processing"""
     GATEA_MIN_VOL = 300000
-    GATEA_MIN_RVOL = 1.3
+    GATEA_MIN_RVOL = 1.2  # LOWERED for true stealth detection
     K_GATEB = 500
     N_GATEC = 100
     MIN_MARKET_CAP = 100e6
@@ -75,6 +75,15 @@ class GateConfig:
     # Phase 6: Web Context Enrichment
     WEB_ENRICHMENT = True     # Enable real-time web context enrichment (Perplexity API)
     WEB_ENRICHMENT_LIMIT = 8  # Top N survivors to enrich with web context
+
+    # CRITICAL FIX: True Pre-Explosion Detection Parameters
+    MAX_STEALTH_RVOL = 2.5    # Maximum RVOL for stealth accumulation
+    MAX_STEALTH_CHANGE = 3.0  # Maximum daily change % for stealth
+    SUSTAINED_DAYS = 14       # Look for accumulation over N days
+    VOLUME_TREND_WEIGHT = 0.4 # Weight for sustained volume trend
+    PRICE_STABILITY_WEIGHT = 0.3 # Weight for price stability
+    INSTITUTIONAL_WEIGHT = 0.3   # Weight for institutional pattern
+    LOSER_COOLOFF_DAYS = 30      # Days to exclude losing stocks
 
 class UniversalDiscoverySystem:
     def __init__(self):
@@ -99,6 +108,121 @@ class UniversalDiscoverySystem:
         self.use_mcp = False  # MCP completely disabled
         self.short_interest_cache = {}
         self.ticker_details_cache = {}
+        # CRITICAL FIX: Performance feedback system
+        self.portfolio_losers = set()  # Track recent losing stocks
+        self.historical_volume_cache = {}  # Cache for sustained accumulation analysis
+        self.blacklist_until = {}  # Track when to allow stocks back
+        self.load_portfolio_performance()  # Load recent losers on startup
+
+    def load_portfolio_performance(self):
+        """Load recent portfolio performance to exclude losing stocks"""
+        try:
+            # This would integrate with actual portfolio data
+            # For now, hardcode recent losers from the analysis
+            current_losers = {
+                'FATN', 'QMCO', 'QSI', 'NAK', 'PLTR', 'SOFI'  # Recent portfolio losers
+            }
+
+            # Add to blacklist with cooloff period
+            current_time = time.time()
+            cooloff_seconds = self.config.LOSER_COOLOFF_DAYS * 24 * 3600
+
+            for ticker in current_losers:
+                self.portfolio_losers.add(ticker)
+                self.blacklist_until[ticker] = current_time + cooloff_seconds
+
+            logger.info(f"💔 Loaded {len(current_losers)} recent losers into blacklist for {self.config.LOSER_COOLOFF_DAYS} days")
+
+        except Exception as e:
+            logger.warning(f"Failed to load portfolio performance: {e}")
+
+    def is_blacklisted(self, symbol: str) -> bool:
+        """Check if a stock is currently blacklisted due to recent poor performance"""
+        if symbol not in self.blacklist_until:
+            return False
+
+        current_time = time.time()
+        if current_time > self.blacklist_until[symbol]:
+            # Cooloff period expired, remove from blacklist
+            del self.blacklist_until[symbol]
+            self.portfolio_losers.discard(symbol)
+            return False
+
+        return True
+
+    def get_sustained_volume_pattern(self, symbol: str, days: int = 14) -> Dict:
+        """Get sustained volume accumulation pattern over multiple days"""
+        try:
+            cache_key = f"{symbol}_{days}d"
+            if cache_key in self.historical_volume_cache:
+                cached_time, cached_data = self.historical_volume_cache[cache_key]
+                if time.time() - cached_time < 3600:  # 1 hour cache
+                    return cached_data
+
+            # Get historical volume data via Polygon API
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=days+5)  # Extra days for baseline
+
+            volume_data = _call_polygon_api(
+                'mcp__polygon__get_aggs',
+                ticker=symbol,
+                multiplier=1,
+                timespan='day',
+                from_=start_date.strftime('%Y-%m-%d'),
+                to=end_date.strftime('%Y-%m-%d')
+            )
+
+            if not volume_data or volume_data.get('status') != 'OK':
+                return {'pattern': 'unknown', 'trend_score': 0, 'accumulation_days': 0}
+
+            results = volume_data.get('results', [])
+            if len(results) < days:
+                return {'pattern': 'insufficient_data', 'trend_score': 0, 'accumulation_days': 0}
+
+            # Analyze volume trend over the period
+            volumes = [r.get('v', 0) for r in results[-days:]]
+            baseline_volume = np.mean([r.get('v', 0) for r in results[:-days]]) if len(results) > days else np.mean(volumes[:5])
+
+            # Calculate sustained accumulation metrics
+            accumulation_days = 0
+            trend_scores = []
+
+            for i, volume in enumerate(volumes):
+                if volume > baseline_volume * 1.2:  # 20% above baseline
+                    accumulation_days += 1
+                    # Weight more recent days higher
+                    recent_weight = (i + 1) / len(volumes)
+                    rvol = volume / baseline_volume if baseline_volume > 0 else 1.0
+                    trend_scores.append(min(rvol * recent_weight, 5.0))  # Cap influence
+
+            avg_trend_score = np.mean(trend_scores) if trend_scores else 0
+            accumulation_ratio = accumulation_days / days
+
+            # Determine pattern type
+            if accumulation_ratio >= 0.7 and avg_trend_score >= 1.5:
+                pattern = 'strong_sustained'
+            elif accumulation_ratio >= 0.5 and avg_trend_score >= 1.3:
+                pattern = 'moderate_sustained'
+            elif accumulation_ratio >= 0.3 and avg_trend_score >= 1.2:
+                pattern = 'emerging_accumulation'
+            else:
+                pattern = 'weak_or_none'
+
+            result = {
+                'pattern': pattern,
+                'trend_score': round(avg_trend_score, 2),
+                'accumulation_days': accumulation_days,
+                'accumulation_ratio': round(accumulation_ratio, 2),
+                'baseline_volume': int(baseline_volume)
+            }
+
+            # Cache the result
+            self.historical_volume_cache[cache_key] = (time.time(), result)
+            return result
+
+        except Exception as e:
+            logger.debug(f"Sustained volume analysis failed for {symbol}: {e}")
+            return {'pattern': 'error', 'trend_score': 0, 'accumulation_days': 0}
 
     def _get_best_price_volume(self, ticker_data):
         """Get best available price/volume with fallbacks for market closed periods"""
@@ -996,9 +1120,19 @@ class UniversalDiscoverySystem:
         ].copy()
 
         # Apply dynamic volume filter
-        filtered_df = base_filtered[base_filtered.apply(dynamic_volume_filter, axis=1)].copy()
+        volume_filtered = base_filtered[base_filtered.apply(dynamic_volume_filter, axis=1)].copy()
+
+        # CRITICAL FIX: Apply blacklist filter to exclude recent losers
+        def blacklist_filter(row):
+            return not self.is_blacklisted(row['symbol'])
+
+        pre_blacklist_count = len(volume_filtered)
+        filtered_df = volume_filtered[volume_filtered.apply(blacklist_filter, axis=1)].copy()
+        blacklisted_count = pre_blacklist_count - len(filtered_df)
 
         logger.info(f"✅ Gate A applied: {len(filtered_df)} stocks remaining")
+        if blacklisted_count > 0:
+            logger.info(f"🚫 Excluded {blacklisted_count} recent portfolio losers (30-day cooloff)")
 
         # Optimized RVOL-based scoring system
         logger.info("🎯 Calculating optimized accumulation scores with smart RVOL...")
@@ -1020,6 +1154,15 @@ class UniversalDiscoverySystem:
             try:
                 # Smart RVOL estimation without individual API calls
                 rvol = self._estimate_smart_rvol(symbol, current_volume, price, market_volume_stats)
+
+                # CRITICAL FIX: True stealth detection - reject stocks with excessive RVOL or price movement
+                if rvol > self.config.MAX_STEALTH_RVOL:
+                    return 0  # Too much volume = already discovered/exploded
+                if abs(change_pct) > self.config.MAX_STEALTH_CHANGE:
+                    return 0  # Too much price movement = already exploded
+
+                # Get sustained accumulation pattern for multi-day analysis
+                sustained_pattern = self.get_sustained_volume_pattern(symbol, self.config.SUSTAINED_DAYS)
 
                 # 1. ENHANCED STEALTH ACCUMULATION SCORE (40% weight) - GRANULAR PRECISION
                 # High volume with minimal price movement = institutions accumulating quietly
@@ -1104,7 +1247,27 @@ class UniversalDiscoverySystem:
                     elif rvol >= 1.5:   volume_quality = 8    # Good volume
                     elif rvol >= 1.3:   volume_quality = 5    # Above average volume
 
-                total_score = stealth_score + size_score + coiling_bonus + volume_quality
+                # 5. NEW: SUSTAINED ACCUMULATION SCORE (20% weight) - MULTI-DAY ANALYSIS
+                sustained_score = 0
+                if sustained_pattern['pattern'] != 'error':
+                    pattern_type = sustained_pattern['pattern']
+                    trend_score = sustained_pattern.get('trend_score', 0)
+                    accumulation_ratio = sustained_pattern.get('accumulation_ratio', 0)
+
+                    # Weight based on sustained pattern quality
+                    if pattern_type == 'strong_sustained':
+                        sustained_score = 20.0 * min(1.0, trend_score / 2.0)  # Max at trend_score = 2.0
+                    elif pattern_type == 'moderate_sustained':
+                        sustained_score = 15.0 * min(1.0, trend_score / 1.8)
+                    elif pattern_type == 'emerging_accumulation':
+                        sustained_score = 10.0 * min(1.0, trend_score / 1.5)
+
+                    # Additional bonus for consistent accumulation
+                    if accumulation_ratio >= 0.6:
+                        sustained_score *= 1.2  # 20% bonus for consistency
+
+                # Rebalance weights: Stealth 35%, Size 20%, Coiling 15%, Volume 10%, Sustained 20%
+                total_score = (stealth_score * 0.875) + (size_score * 0.8) + (coiling_bonus * 0.75) + (volume_quality * 0.67) + sustained_score
 
                 # Penalty for stocks that already exploded or have extreme volume (we might be late)
                 if abs_change > 8.0:
