@@ -564,8 +564,11 @@ class UniversalDiscoverySystem:
         # Initialize web enrichment fields with None defaults
         for idx, row in enriched_df.iterrows():
             enriched_df.at[idx, 'web_catalyst_summary'] = None
-            enriched_df.at[idx, 'web_sentiment_score'] = None
-            enriched_df.at[idx, 'analyst_action'] = None
+            enriched_df.at[idx, 'web_catalyst_score'] = 0
+            enriched_df.at[idx, 'web_sentiment_score'] = 0
+            enriched_df.at[idx, 'web_sentiment_description'] = None
+            enriched_df.at[idx, 'institutional_activity'] = None
+            enriched_df.at[idx, 'institutional_score'] = 0
 
         for idx, (_, row) in enumerate(survivors_df.head(limit).iterrows()):
             try:
@@ -577,21 +580,24 @@ class UniversalDiscoverySystem:
                 news_query = f"latest news {symbol} stock site:finance.yahoo.com OR site:benzinga.com OR site:seekingalpha.com"
                 news_context = self._query_perplexity(news_query)
 
-                # Query 2: Analyst actions
-                analyst_query = f"analyst rating upgrade downgrade {symbol} stock"
-                analyst_context = self._query_perplexity(analyst_query)
+                # Query 2: Institutional/Options activity (unbiased leading indicators)
+                institutional_query = f"institutional buying unusual options activity {symbol} stock"
+                institutional_context = self._query_perplexity(institutional_query)
 
                 # Query 3: Social sentiment
                 social_query = f"Reddit StockTwits {symbol} stock buzz"
                 social_context = self._query_perplexity(social_query)
 
                 # Parse and extract insights
-                web_insights = self._parse_web_context(news_context, analyst_context, social_context, symbol)
+                web_insights = self._parse_web_context(news_context, institutional_context, social_context, symbol)
 
                 # Store enrichment data
                 enriched_df.at[row.name, 'web_catalyst_summary'] = web_insights.get('catalyst_summary')
-                enriched_df.at[row.name, 'web_sentiment_score'] = web_insights.get('sentiment_score')
-                enriched_df.at[row.name, 'analyst_action'] = web_insights.get('analyst_action')
+                enriched_df.at[row.name, 'web_catalyst_score'] = web_insights.get('catalyst_score', 0)
+                enriched_df.at[row.name, 'web_sentiment_score'] = web_insights.get('sentiment_score', 0)
+                enriched_df.at[row.name, 'web_sentiment_description'] = web_insights.get('sentiment_description')
+                enriched_df.at[row.name, 'institutional_activity'] = web_insights.get('institutional_activity')
+                enriched_df.at[row.name, 'institutional_score'] = web_insights.get('institutional_score', 0)
 
                 # Apply small multipliers to explosion probability (max +10% uplift)
                 current_prob = enriched_df.at[row.name, 'explosion_probability']
@@ -609,10 +615,10 @@ class UniversalDiscoverySystem:
                         multiplier *= 1.03
                         logger.debug(f"   😊 {symbol}: Positive sentiment bonus (+3%)")
 
-                    # Analyst upgrade bonus
-                    if web_insights.get('analyst_action') == 'upgrade':
-                        multiplier *= 1.02
-                        logger.debug(f"   📊 {symbol}: Analyst upgrade bonus (+2%)")
+                    # Institutional activity bonus
+                    if web_insights.get('institutional_score', 0) > 15:
+                        multiplier *= 1.03
+                        logger.debug(f"   📊 {symbol}: Strong institutional activity bonus (+3%)")
 
                     # Apply multiplier (cap at 95%)
                     new_prob = min(current_prob * multiplier, 95.0)
@@ -655,7 +661,7 @@ class UniversalDiscoverySystem:
             }
 
             payload = {
-                'model': 'llama-3.1-sonar-small-online',
+                'model': 'sonar',
                 'messages': [
                     {'role': 'user', 'content': query}
                 ],
@@ -685,52 +691,119 @@ class UniversalDiscoverySystem:
             logger.debug(f"Perplexity API query failed: {e}")
             return ""
 
-    def _parse_web_context(self, news_content: str, analyst_content: str, social_content: str, symbol: str) -> Dict:
-        """Parse web context content to extract structured insights"""
+    def _parse_web_context(self, news_content: str, institutional_content: str, social_content: str, symbol: str) -> Dict:
+        """Parse web context content to extract structured insights with scoring and descriptions"""
         insights = {
             'catalyst_summary': None,
-            'sentiment_score': None,
-            'analyst_action': None
+            'catalyst_score': 0,
+            'sentiment_score': 0,
+            'sentiment_description': None,
+            'institutional_activity': None,
+            'institutional_score': 0
         }
 
         try:
-            # Parse catalyst summary from news content
-            if news_content:
-                # Look for common catalyst keywords
-                catalyst_keywords = ['FDA', 'trial', 'earnings', 'merger', 'acquisition', 'partnership',
-                                   'contract', 'approval', 'launch', 'insider buying', 'buyback']
+            # Parse catalyst summary from news content with scoring
+            if news_content and news_content.strip():
+                # High-impact catalyst keywords with scoring weights
+                high_impact_catalysts = {
+                    'FDA approval': 25, 'merger': 20, 'acquisition': 20, 'breakthrough': 15,
+                    'partnership': 12, 'contract': 10, 'earnings beat': 15
+                }
+                medium_impact_catalysts = {
+                    'trial results': 8, 'launch': 8, 'expansion': 6, 'guidance': 5
+                }
 
                 news_lower = news_content.lower()
-                found_catalysts = [kw for kw in catalyst_keywords if kw.lower() in news_lower]
+                catalyst_score = 0
+                found_catalysts = []
+
+                # Check for high-impact catalysts
+                for catalyst, score in high_impact_catalysts.items():
+                    if catalyst in news_lower:
+                        catalyst_score += score
+                        found_catalysts.append(catalyst)
+
+                # Check for medium-impact catalysts
+                for catalyst, score in medium_impact_catalysts.items():
+                    if catalyst in news_lower:
+                        catalyst_score += score
+                        found_catalysts.append(catalyst)
 
                 if found_catalysts:
-                    # Extract a concise summary (first 100 chars with catalyst context)
-                    catalyst_summary = news_content[:100].strip()
-                    if len(news_content) > 100:
+                    # Extract concise summary (first 120 chars)
+                    catalyst_summary = news_content[:120].strip()
+                    if len(news_content) > 120:
                         catalyst_summary += "..."
                     insights['catalyst_summary'] = catalyst_summary
+                    insights['catalyst_score'] = min(catalyst_score, 100)  # Cap at 100
+                else:
+                    # General news without specific catalysts
+                    insights['catalyst_summary'] = "Recent news available"
+                    insights['catalyst_score'] = 5
 
-            # Parse analyst action
-            if analyst_content:
-                analyst_lower = analyst_content.lower()
-                if 'upgrade' in analyst_lower:
-                    insights['analyst_action'] = 'upgrade'
-                elif 'downgrade' in analyst_lower:
-                    insights['analyst_action'] = 'downgrade'
+            # Parse institutional activity with scoring
+            if institutional_content and institutional_content.strip():
+                institutional_lower = institutional_content.lower()
+                institutional_score = 0
+                activity_indicators = []
 
-            # Parse sentiment score (simple keyword-based)
-            if social_content:
-                positive_words = ['bullish', 'buy', 'moon', 'rocket', 'strong', 'good', 'positive', 'up']
-                negative_words = ['bearish', 'sell', 'dump', 'weak', 'bad', 'negative', 'down']
+                # Institutional activity indicators
+                if 'unusual options' in institutional_lower:
+                    institutional_score += 15
+                    activity_indicators.append('unusual options')
+                if 'institutional buying' in institutional_lower:
+                    institutional_score += 20
+                    activity_indicators.append('institutional buying')
+                if 'insider buying' in institutional_lower:
+                    institutional_score += 10
+                    activity_indicators.append('insider activity')
+                if 'large volume' in institutional_lower:
+                    institutional_score += 8
+                    activity_indicators.append('volume surge')
+
+                if activity_indicators:
+                    insights['institutional_activity'] = ', '.join(activity_indicators)
+                    insights['institutional_score'] = min(institutional_score, 100)
+                else:
+                    insights['institutional_activity'] = "Monitoring institutional flows"
+                    insights['institutional_score'] = 5
+
+            # Parse sentiment score with descriptive analysis
+            if social_content and social_content.strip():
+                # Enhanced sentiment analysis
+                strong_bullish = ['moon', 'rocket', 'breakout', 'explosive', 'massive']
+                bullish = ['bullish', 'buy', 'strong', 'positive', 'up', 'calls']
+                bearish = ['bearish', 'sell', 'weak', 'negative', 'down', 'puts']
+                strong_bearish = ['dump', 'crash', 'terrible', 'avoid']
 
                 social_lower = social_content.lower()
-                positive_count = sum(1 for word in positive_words if word in social_lower)
-                negative_count = sum(1 for word in negative_words if word in social_lower)
 
-                total_sentiment_words = positive_count + negative_count
-                if total_sentiment_words > 0:
-                    sentiment_score = positive_count / total_sentiment_words
-                    insights['sentiment_score'] = round(sentiment_score, 2)
+                # Calculate weighted sentiment
+                strong_bull_count = sum(1 for word in strong_bullish if word in social_lower)
+                bull_count = sum(1 for word in bullish if word in social_lower)
+                bear_count = sum(1 for word in bearish if word in social_lower)
+                strong_bear_count = sum(1 for word in strong_bearish if word in social_lower)
+
+                # Weighted scoring
+                sentiment_score = (strong_bull_count * 20 + bull_count * 10 -
+                                 bear_count * 10 - strong_bear_count * 20)
+
+                # Normalize to 0-100 scale
+                sentiment_score = max(0, min(100, 50 + sentiment_score))
+                insights['sentiment_score'] = sentiment_score
+
+                # Descriptive analysis
+                if sentiment_score >= 75:
+                    insights['sentiment_description'] = "Strong bullish sentiment"
+                elif sentiment_score >= 60:
+                    insights['sentiment_description'] = "Moderately bullish"
+                elif sentiment_score >= 40:
+                    insights['sentiment_description'] = "Mixed sentiment"
+                elif sentiment_score >= 25:
+                    insights['sentiment_description'] = "Moderately bearish"
+                else:
+                    insights['sentiment_description'] = "Strong bearish sentiment"
 
         except Exception as e:
             logger.debug(f"Error parsing web context for {symbol}: {e}")

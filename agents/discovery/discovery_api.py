@@ -398,10 +398,13 @@ async def get_top_signals():
                     "short_squeeze_potential": candidate.get("short_squeeze_potential", "Unknown"),
                     "data_source": "ENHANCED_DISCOVERY_SYSTEM",
 
-                    # Phase 6: Web Context Enrichment fields
+                    # Phase 6: Enhanced Web Context Enrichment fields with scoring
                     "web_catalyst_summary": candidate.get("web_catalyst_summary"),
-                    "web_sentiment_score": candidate.get("web_sentiment_score"),
-                    "analyst_action": candidate.get("analyst_action")
+                    "web_catalyst_score": candidate.get("web_catalyst_score", 0),
+                    "web_sentiment_score": candidate.get("web_sentiment_score", 0),
+                    "web_sentiment_description": candidate.get("web_sentiment_description"),
+                    "institutional_activity": candidate.get("institutional_activity"),
+                    "institutional_score": candidate.get("institutional_score", 0)
                 }
                 formatted_results.append(formatted_result)
             except (ValueError, TypeError) as e:
