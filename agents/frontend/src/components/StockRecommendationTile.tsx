@@ -52,31 +52,35 @@ export const StockRecommendationTile: React.FC<StockRecommendationTileProps> = (
 
   const style = getConfidenceStyle();
 
-  // Format discovery reason
+  // Format discovery reason with RVOL emphasis
   const getDiscoveryReason = () => {
     const reasons = [];
 
+    // CRITICAL: Show RVOL first (most important metric)
+    const rvol = stockAnalysis.rvol || 1.0;
+    if (rvol >= 2.0) {
+      reasons.push(`🚀 ${rvol.toFixed(1)}x volume surge - Strong accumulation`);
+    } else if (rvol >= 1.5) {
+      reasons.push(`📊 ${rvol.toFixed(1)}x volume increase - Stealth pattern`);
+    }
+
     if (stockAnalysis.volume_score > 2) {
-      reasons.push(`🚀 Volume surge ${stockAnalysis.volume_score.toFixed(1)}x`);
+      reasons.push(`Volume score: ${stockAnalysis.volume_score.toFixed(1)}x`);
     }
 
     if (stockAnalysis.momentum_score > 10) {
-      reasons.push(`📈 Strong momentum +${stockAnalysis.momentum_score.toFixed(1)}%`);
+      reasons.push(`Momentum: +${stockAnalysis.momentum_score.toFixed(1)}%`);
     }
 
     if (stockAnalysis.short_interest && stockAnalysis.short_interest > 15) {
-      reasons.push(`🎯 Squeeze potential ${stockAnalysis.short_interest.toFixed(1)}% SI`);
+      reasons.push(`🎯 Squeeze setup: ${stockAnalysis.short_interest.toFixed(1)}% SI`);
     }
 
     if (stockAnalysis.signals.includes('Breakout')) {
-      reasons.push('📊 Technical breakout');
+      reasons.push('📊 Breakout pattern detected');
     }
 
-    if (stockAnalysis.volatility > 0.4) {
-      reasons.push('⚡ High volatility energy');
-    }
-
-    return reasons.length > 0 ? reasons.join(' • ') : 'Multi-factor AI analysis';
+    return reasons.length > 0 ? reasons.join(' • ') : `${rvol.toFixed(1)}x RVOL - Accumulation pattern`;
   };
 
   const handlePurchase = () => {
@@ -135,8 +139,14 @@ export const StockRecommendationTile: React.FC<StockRecommendationTileProps> = (
         </div>
       </div>
 
-      {/* Key Metrics */}
-      <div className="grid grid-cols-3 gap-2 mb-4 text-xs">
+      {/* Key Metrics - RVOL FIRST */}
+      <div className="grid grid-cols-4 gap-2 mb-4 text-xs">
+        <div className="bg-gradient-to-br from-green-900/40 to-green-800/40 rounded p-2 text-center border border-green-600/30">
+          <div className="text-green-300 font-semibold">RVOL</div>
+          <div className="text-white font-bold text-lg">
+            {(stockAnalysis.rvol || 1.0).toFixed(1)}x
+          </div>
+        </div>
         <div className="bg-black/20 rounded p-2 text-center">
           <div className="text-gray-400">Volume</div>
           <div className="text-white font-bold">

@@ -77,13 +77,16 @@ class GateConfig:
     WEB_ENRICHMENT_LIMIT = 8  # Top N survivors to enrich with web context
 
     # CRITICAL FIX: True Pre-Explosion Detection Parameters
-    MAX_STEALTH_RVOL = 2.5    # Maximum RVOL for stealth accumulation
-    MAX_STEALTH_CHANGE = 3.0  # Maximum daily change % for stealth
+    MIN_STEALTH_RVOL = 1.5    # Minimum RVOL for accumulation detection (avoid dead stocks)
+    MAX_STEALTH_RVOL = 2.0    # Maximum RVOL for stealth accumulation (TIGHTENED from 2.5)
+    MAX_STEALTH_CHANGE = 2.0  # Maximum daily change % for stealth (TIGHTENED from 3.0)
     SUSTAINED_DAYS = 14       # Look for accumulation over N days
     VOLUME_TREND_WEIGHT = 0.4 # Weight for sustained volume trend
     PRICE_STABILITY_WEIGHT = 0.3 # Weight for price stability
     INSTITUTIONAL_WEIGHT = 0.3   # Weight for institutional pattern
     LOSER_COOLOFF_DAYS = 30      # Days to exclude losing stocks
+    MIN_PRICE = 5.0              # Minimum price to avoid penny stock contamination
+    AUTO_STOP_LOSS_PCT = -15.0   # Automatic stop-loss threshold
 
 class UniversalDiscoverySystem:
     def __init__(self):
@@ -117,10 +120,10 @@ class UniversalDiscoverySystem:
     def load_portfolio_performance(self):
         """Load recent portfolio performance to exclude losing stocks"""
         try:
-            # This would integrate with actual portfolio data
-            # For now, hardcode recent losers from the analysis
+            # CRITICAL FIX: Add current portfolio losers from analysis
             current_losers = {
-                'FATN', 'QMCO', 'QSI', 'NAK', 'PLTR', 'SOFI'  # Recent portfolio losers
+                'FATN', 'QMCO', 'QSI', 'NAK', 'PLTR', 'SOFI',  # Original losers
+                'GCCS', 'CDLX', 'CLOV', 'LAES'  # NEW: Additional failing positions from portfolio
             }
 
             # Add to blacklist with cooloff period
@@ -132,6 +135,7 @@ class UniversalDiscoverySystem:
                 self.blacklist_until[ticker] = current_time + cooloff_seconds
 
             logger.info(f"💔 Loaded {len(current_losers)} recent losers into blacklist for {self.config.LOSER_COOLOFF_DAYS} days")
+            logger.info(f"🚫 Blacklisted tickers: {sorted(self.portfolio_losers)}")
 
         except Exception as e:
             logger.warning(f"Failed to load portfolio performance: {e}")
@@ -1111,7 +1115,7 @@ class UniversalDiscoverySystem:
 
         # Apply base filters first - ETF/Fund exclusion added per user request
         base_filtered = universe_df[
-            (universe_df['price'] >= 0.50) &    # Eliminate true penny stocks
+            (universe_df['price'] >= self.config.MIN_PRICE) &    # TIGHTENED: $5+ to avoid penny stocks
             (universe_df['price'] <= 100) &     # Keep within your budget
             # REMOVED movement requirement - we want PRE-explosion stocks (stealth accumulation)
             # ETF/Fund/REIT exclusion filter - STOCKS ONLY per user requirement
@@ -1158,8 +1162,12 @@ class UniversalDiscoverySystem:
                 # CRITICAL FIX: True stealth detection - reject stocks with excessive RVOL or price movement
                 if rvol > self.config.MAX_STEALTH_RVOL:
                     return 0  # Too much volume = already discovered/exploded
+                if rvol < self.config.MIN_STEALTH_RVOL:
+                    return 0  # Too little volume = dead stock, no accumulation
                 if abs(change_pct) > self.config.MAX_STEALTH_CHANGE:
                     return 0  # Too much price movement = already exploded
+                if price < self.config.MIN_PRICE:
+                    return 0  # Penny stock contamination - avoid
 
                 # Get sustained accumulation pattern for multi-day analysis
                 sustained_pattern = self.get_sustained_volume_pattern(symbol, self.config.SUSTAINED_DAYS)
