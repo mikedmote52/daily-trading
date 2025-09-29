@@ -6,6 +6,7 @@ export interface StockAnalysis {
   change: number;
   change_percent: number;
   volume: number;
+  rvol: number;  // CRITICAL: Relative Volume (most important metric for stealth detection)
   market_cap: number | null;
   pe_ratio: number | null;
   short_interest: number | null;

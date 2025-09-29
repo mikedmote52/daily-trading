@@ -39,10 +39,11 @@ export class DiscoveryService {
         change: 0, // Not provided by discovery API
         change_percent: 0, // Not provided by discovery API
         volume: parseInt(stock.volume || 0),
+        rvol: parseFloat(stock.rvol || 1.0), // CRITICAL: Preserve RVOL for stealth detection display
         market_cap: stock.market_cap || null, // Enhanced market cap data
         pe_ratio: null, // Not provided by discovery API
         short_interest: null, // Not provided by discovery API
-        volatility: parseFloat(stock.rvol || 0), // Use RVOL as volatility proxy
+        volatility: 0.3, // Default volatility placeholder
         momentum_score: parseFloat(stock.score || 70), // Use discovery score
         volume_score: parseFloat(stock.rvol || 1), // Use RVOL as volume score
         ai_score: Math.round(parseFloat(stock.score || 70)), // Use discovery score as AI score
