@@ -72,9 +72,9 @@ class GateConfig:
     ENHANCED_SCORING = True   # Enable granular scoring and premium data enrichment
     ENRICHMENT_LIMIT = 30     # Top N candidates to enrich with premium data
 
-    # Phase 6: Web Context Enrichment
-    WEB_ENRICHMENT = True     # Enable real-time web context enrichment (Perplexity API)
-    WEB_ENRICHMENT_LIMIT = 8  # Top N survivors to enrich with web context
+    # Phase 6: Web Context Enrichment - DISABLED (was generating template responses)
+    WEB_ENRICHMENT = False    # Disabled - no external API, causes generic "Moderately bullish" spam
+    WEB_ENRICHMENT_LIMIT = 0  # Not used when disabled
 
     # CRITICAL FIX: True Pre-Explosion Detection Parameters
     MIN_STEALTH_RVOL = 1.5    # Minimum RVOL for accumulation detection (avoid dead stocks)

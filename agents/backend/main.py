@@ -107,133 +107,52 @@ class BackendOrchestrationAgent:
         self.claude = Anthropic(api_key=os.getenv('CLAUDE_API_KEY'))
         self.redis_client = redis.Redis.from_url(os.getenv('REDIS_URL', 'redis://localhost:6379'))
         self.connection_manager = ConnectionManager()
+        self.discovery_api_url = os.getenv('DISCOVERY_API_URL', 'https://alphastack-discovery.onrender.com')
+
+        # Real data only - fetched from discovery system
         self.watchlist: List[Stock] = []
         self.positions: List[Position] = []
         self.trades: List[Trade] = []
         self.backtest_results: List[BacktestResult] = []
-        
-        # Initialize with sample data
-        self._initialize_sample_data()
 
-    def _initialize_sample_data(self):
-        """Initialize with sample data for demonstration"""
-        # Sample watchlist
-        symbols = ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA', 'META', 'AMZN', 'NFLX']
-        
+        logger.info(f"✅ Backend initialized - connecting to discovery system at {self.discovery_api_url}")
+
+    async def fetch_explosive_stocks(self) -> List[Stock]:
+        """Fetch explosive stock candidates from discovery system"""
         try:
-            # Fetch real data from Yahoo Finance
-            for symbol in symbols:
-                ticker = yf.Ticker(symbol)
-                info = ticker.info
-                hist = ticker.history(period="2d")
-                
-                if len(hist) >= 2:
-                    current_price = hist['Close'].iloc[-1]
-                    previous_price = hist['Close'].iloc[-2]
-                    change = current_price - previous_price
-                    change_percent = (change / previous_price) * 100
-                    
-                    stock = Stock(
-                        symbol=symbol,
-                        name=info.get('longName', symbol),
-                        price=current_price,
-                        change=change,
-                        changePercent=change_percent,
-                        volume=int(hist['Volume'].iloc[-1]),
-                        marketCap=info.get('marketCap'),
-                        pe=info.get('trailingPE'),
-                        shortInterest=info.get('shortPercentOfFloat', 0) * 100 if info.get('shortPercentOfFloat') else None,
-                        aiScore=85 + (hash(symbol) % 15),  # Mock AI score
-                        signals=['Momentum', 'Volume Surge'] if change > 0 else ['Support Level']
-                    )
-                    self.watchlist.append(stock)
-                    
+            import aiohttp
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"{self.discovery_api_url}/signals/top") as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        logger.info(f"✅ Fetched {len(data)} explosive stocks from discovery system")
+
+                        # Transform discovery API format to Stock model
+                        stocks = []
+                        for item in data:
+                            stock = Stock(
+                                symbol=item.get('symbol'),
+                                name=item.get('company_name', item.get('symbol')),
+                                price=float(item.get('price', 0)),
+                                change=0,  # Not provided by discovery
+                                changePercent=0,  # Not provided by discovery
+                                volume=int(item.get('volume', 0)),
+                                marketCap=item.get('market_cap'),
+                                pe=None,
+                                shortInterest=None,
+                                aiScore=int(item.get('score', 0)),
+                                signals=[item.get('reason', 'Discovery signal')]
+                            )
+                            stocks.append(stock)
+
+                        return stocks
+                    else:
+                        logger.error(f"❌ Discovery API returned {response.status}")
+                        return []
+
         except Exception as e:
-            logger.warning(f"Failed to fetch real data, using mock data: {e}")
-            # Fallback to mock data
-            for symbol in symbols:
-                stock = Stock(
-                    symbol=symbol,
-                    name=f"{symbol} Inc.",
-                    price=150.0 + (hash(symbol) % 100),
-                    change=-2.5 + (hash(symbol) % 10),
-                    changePercent=-1.5 + (hash(symbol) % 3),
-                    volume=1000000 + (hash(symbol) % 500000),
-                    marketCap=1000000000 + (hash(symbol) % 500000000),
-                    pe=15.0 + (hash(symbol) % 20),
-                    shortInterest=5.0 + (hash(symbol) % 15),
-                    aiScore=70 + (hash(symbol) % 30),
-                    signals=['Technical Analysis', 'Volume Pattern']
-                )
-                self.watchlist.append(stock)
-
-        # Sample positions
-        self.positions = [
-            Position(
-                symbol='AAPL',
-                shares=100,
-                avgPrice=145.50,
-                currentPrice=self.watchlist[0].price if self.watchlist else 150.0,
-                unrealizedPnl=450.0,
-                unrealizedPnlPercent=3.1,
-                marketValue=15000.0
-            ),
-            Position(
-                symbol='GOOGL',
-                shares=50,
-                avgPrice=120.00,
-                currentPrice=self.watchlist[1].price if len(self.watchlist) > 1 else 125.0,
-                unrealizedPnl=250.0,
-                unrealizedPnlPercent=4.2,
-                marketValue=6250.0
-            )
-        ]
-
-        # Sample trades
-        self.trades = [
-            Trade(
-                id='trade_001',
-                symbol='AAPL',
-                side='buy',
-                quantity=100,
-                price=145.50,
-                timestamp=(datetime.now() - timedelta(hours=2)).isoformat(),
-                status='filled',
-                strategy='AI Signals'
-            ),
-            Trade(
-                id='trade_002',
-                symbol='GOOGL',
-                side='buy',
-                quantity=50,
-                price=120.00,
-                timestamp=(datetime.now() - timedelta(hours=1)).isoformat(),
-                status='filled',
-                strategy='Momentum'
-            )
-        ]
-
-        # Sample backtest results
-        self.backtest_results = [
-            BacktestResult(
-                strategy='momentum',
-                totalReturn=15.7,
-                sharpeRatio=1.42,
-                maxDrawdown=-8.3,
-                winRate=62.5,
-                totalTrades=120,
-                period='2024-01-01 to 2024-12-31'
-            ),
-            BacktestResult(
-                strategy='mean_reversion',
-                totalReturn=8.9,
-                sharpeRatio=0.89,
-                maxDrawdown=-12.1,
-                winRate=58.3,
-                totalTrades=95,
-                period='2024-01-01 to 2024-12-31'
-            )
-        ]
+            logger.error(f"❌ Failed to fetch from discovery system: {e}")
+            return []
 
     async def send_heartbeat(self):
         """Send heartbeat to master agent"""
@@ -461,8 +380,10 @@ async def health_check():
 
 @app.get("/api/watchlist", response_model=List[Stock])
 async def get_watchlist():
-    """Get current watchlist"""
-    return backend_agent.watchlist
+    """Get explosive stock watchlist from discovery system"""
+    explosive_stocks = await backend_agent.fetch_explosive_stocks()
+    backend_agent.watchlist = explosive_stocks
+    return explosive_stocks
 
 @app.get("/api/positions")
 async def get_positions():
