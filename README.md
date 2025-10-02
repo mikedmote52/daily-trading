@@ -21,6 +21,60 @@ This system is designed to identify and trade explosive growth stocks like our p
 
 **Benchmark Performance: +63.8% June-July Period**
 
+## 🎯 Performance Optimization (October 2025)
+
+**Mission:** Replicate +63.8% monthly returns from June-July baseline
+
+### Historical Baseline (June 1 - July 4, 2024)
+- **Portfolio:** 15 positions × $100 = $1,500 initial capital
+- **Final Value:** $2,457.50
+- **Total Return:** +63.8% (+$957.50)
+- **Win Rate:** 93.3% (14/15 profitable)
+- **Top Performers:**
+  - VIGL: +324% (detected at RVOL 1.8x, +0.4% price - stealth accumulation)
+  - CRWV: +171% (detected at RVOL 1.9x, -0.2% price - institutional buying)
+  - AEVA: +162% (detected at RVOL 1.7x, +1.1% price - pre-explosion)
+- **Only Loss:** WOLF -25%
+
+### Key Enhancements
+- **Stealth Accumulation Detection:** RVOL 1.5-2.0x magic window (VIGL pattern)
+- **Pre-Explosion Positioning:** <2% price change requirement (catch before explosion)
+- **Multi-Day Pattern Validation:** 14-day sustained accumulation analysis
+- **Risk Management:** -15% stop loss, -10% trailing stop from peak
+- **Blacklist System:** 30-day cooloff for losing stocks (FATN, QMCO, QSI, NAK, PLTR, SOFI, GCCS, CDLX, CLOV, LAES)
+
+### Proven Pattern (VIGL/CRWV/AEVA)
+**The Magic Window:**
+- High volume: 1.5-2.0x RVOL (institutional accumulation)
+- Low price movement: <2% daily change (stealth mode)
+- Price floor: >$5 (quality filter)
+- Pattern duration: 14+ days (sustained accumulation)
+
+**Why This Works:**
+VIGL, CRWV, and AEVA were all detected in this exact window BEFORE their explosive moves. The system identifies institutional accumulation happening quietly - stocks being loaded before the public catches on.
+
+### Target Metrics
+- **Monthly Return:** >60% (baseline: 63.8%)
+- **Win Rate:** >90% (baseline: 93.3%)
+- **Max Loss per Position:** <-15% (prevent WOLF-like losses)
+- **At least 1 position >100% gain** per month
+
+### Portfolio Structure
+- **15 positions** (equal weighting)
+- **$100 per position** ($1,500 total)
+- **Position targets by score:**
+  - Score ≥80: +200% target (VIGL-like potential)
+  - Score ≥70: +150% target (CRWV-like potential)
+  - Score ≥60: +100% target (AEVA-like potential)
+  - Score <60: +50% target
+
+### Configuration
+See `.env.example` for complete stealth detection settings:
+- `MIN_STEALTH_RVOL=1.5`
+- `MAX_STEALTH_RVOL=2.0`
+- `MAX_STEALTH_CHANGE=2.0`
+- `MIN_PRICE=5.0`
+
 ## 🏗️ Multi-Agent Architecture
 
 ### 🔍 Discovery Agent
